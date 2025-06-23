@@ -25,10 +25,6 @@
 - **Clinical Modeling**: Train models to predict clinical endpoints
 - Supports **DICOM** and **NIfTI** inputs
 
-### 🗃️ Dual-Index Backend
-- `df_IDC`: Real-time access to the Imaging Data Commons
-- `df_MIDRC`: A harmonized study-level index of MIDRC, TCIA, AIMI, and other sources
-
 ---
 
 ## ⚙️ Installation & Setup
