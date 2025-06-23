@@ -1,1 +1,1 @@
-# Voxel-Insight
+# Voxel Insight
