@@ -1,0 +1,9 @@
+openai
+chainlit
+pandas
+matplotlib
+pydicom
+totalsegmentator
+pyradiomics
+nibabel
+dicom2nifti
