@@ -37,7 +37,7 @@
 
 1. **Clone the repository**:
    
-   git clone https://github.com/your-username/voxelinsight.git
+   git clone https://github.com/BioIntelligence-Lab/VoxelInsight.git
    cd voxelinsight
 
 2. **Install dependencies**
@@ -46,7 +46,7 @@
   
 3. **Setup Chainlit environment variables**
 
-   Create a file named .env in the same folder as your app.py file. Add your OpenAI API key in the    OPENAI_API_KEY variable.
+   Create a file named .env in the same folder as your app.py file. Add your OpenAI API key in the OPENAI_API_KEY variable.
    
 4. **Run the Application**
 
@@ -68,10 +68,10 @@ Some example questions you can ask VoxelInsight:
 VoxelInsight is continuously expanding its imaging intelligence. Upcoming features include:
 
 - 🧠 **Expanded Model Library**  
-  Support for additional pretrained models on top of **TotalSegmentator**, including tumor subtyping, lesion characterization, and disease-specific segmentations.
+  Support for additional pretrained models on top of **TotalSegmentator**, including tumor and disease-specific segmentations.
 
 - 🧱 **Foundation Model Integration**  
-  Plug-and-play with leading foundation models for medical imaging (e.g., BioMedCLIP, MERLIN, nnDetection) to enhance embedding-based retrieval and classification.
+  Plug-and-play with leading foundation models for medical imaging (e.g., BioMedCLIP, MERLIN) to enhance embedding-based retrieval and classification.
 
 - 🔄 **Longitudinal Imaging Analysis**  
   Track changes across timepoints using embeddings, volumes, and derived biomarkers to study treatment response or disease progression.
@@ -80,7 +80,7 @@ VoxelInsight is continuously expanding its imaging intelligence. Upcoming featur
   Export structured reports summarizing volumetric, radiomic, and anatomical measurements from any imaging study.
 
 - 🧪 **Interactive Visualization Tools**  
-  Scroll, overlay, and compare segmentations directly within the chat environment (coming soon to the UI).
+  Scroll, overlay, and compare segmentations directly within the chat environment.
 
 ---
 
