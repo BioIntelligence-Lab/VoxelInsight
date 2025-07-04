@@ -1,1 +1,9 @@
-
+project:
+  name: VoxelInsight
+  description: Medical-imaging assistant for DICOM/NIfTI exploration, AI segmentation and radiomics.
+ui:
+  theme: light
+  primary_color: "#4F46E5"     # Voxel purple-indigo
+  logo: "/static/voxelinsight_logo.svg"
+  favicon: "/static/favicon.ico"
+  default_page: "landing"
