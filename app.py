@@ -20,11 +20,14 @@ settings = {
     # ... more settings
 }
 
+'''
 from idc_index import index
 
 IDC_Client = index.IDCClient()
 df_IDC = IDC_Client.index
 df_MIDRC = pd.read_csv("C:/Users/vpare/OneDrive - UTHealth Houston/Research/ARPA_H/midrc_distributed_subjects.csv")
+'''
+
 def parse(chat_response):
   #print('H1')
   #code_blocks = re.findall(r"```sql(.+?)```", chat_response, re.DOTALL)
@@ -34,9 +37,6 @@ def parse(chat_response):
     code_blocks[0] = code_blocks[0].replace(';','')
     code_blocks[0] = code_blocks[0]
   return code_blocks
-
-
-
 
 
 @cl.on_message
