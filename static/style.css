@@ -1,1 +1,56 @@
+/* ===== VoxelInsight hero page ===== */
+@font-face{
+  font-family:"Inter";
+  font-style:normal;
+  font-weight:400;
+  src:url("https://fonts.gstatic.com/s/inter/v13/UcCO3Fwr-0If52wQVd0rqvI.woff2") format("woff2");
+}
+
+body.hero{
+  margin:0;
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  text-align:center;
+  font-family:Inter,system-ui,sans-serif;
+  color:#fff;
+  background:linear-gradient(135deg,#4f46e5 0%,#06b6d4 100%);
+}
+
+.logo{width:160px;margin-bottom:1.8rem}
+
+h1{
+  font-size:3rem;
+  margin:0 0 1rem;
+  font-weight:700;
+  letter-spacing:-0.02em;
+}
+
+.tagline{
+  max-width:720px;
+  font-size:1.25rem;
+  line-height:1.45;
+  margin:0 0 2.2rem;
+}
+
+.cta{
+  background:#fff;
+  color:#4f46e5;
+  padding:.9rem 2.3rem;
+  border-radius:10px;
+  font-weight:600;
+  text-decoration:none;
+  box-shadow:0 4px 12px rgba(0,0,0,.15);
+  transition:filter .2s ease;
+}
+.cta:hover{filter:brightness(0.95)}
+
+footer{
+  position:absolute;
+  bottom:24px;
+  font-size:.9rem;
+  opacity:.8;
+}
 
