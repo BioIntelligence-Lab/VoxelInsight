@@ -28,6 +28,9 @@ df_IDC = IDC_Client.index
 df_MIDRC = pd.read_csv("C:/Users/vpare/OneDrive - UTHealth Houston/Research/ARPA_H/midrc_distributed_subjects.csv")
 '''
 
+df_ID = []
+df_MIDR = []
+
 def parse(chat_response):
   #print('H1')
   #code_blocks = re.findall(r"```sql(.+?)```", chat_response, re.DOTALL)
