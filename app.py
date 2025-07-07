@@ -28,8 +28,8 @@ df_IDC = IDC_Client.index
 df_MIDRC = pd.read_csv("C:/Users/vpare/OneDrive - UTHealth Houston/Research/ARPA_H/midrc_distributed_subjects.csv")
 '''
 
-df_ID = []
-df_MIDR = []
+df_IDC = pd.DataFrame()
+df_MIDRC = pd.DataFrame()
 
 def parse(chat_response):
   #print('H1')
