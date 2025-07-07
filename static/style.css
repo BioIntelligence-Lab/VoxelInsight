@@ -1,4 +1,4 @@
-/* ===== VoxelInsight hero page ===== */
+/* ===== VoxelInsight Landing Page ===== */
 @font-face{
   font-family:"Inter";
   font-style:normal;
@@ -6,51 +6,97 @@
   src:url("https://fonts.gstatic.com/s/inter/v13/UcCO3Fwr-0If52wQVd0rqvI.woff2") format("woff2");
 }
 
-body.hero{
-  margin:0;
-  min-height:100vh;
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
-  align-items:center;
-  text-align:center;
-  font-family:Inter,system-ui,sans-serif;
-  color:#fff;
-  background:linear-gradient(135deg,#4f46e5 0%,#06b6d4 100%);
+.voxelinsight-landing {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  font-family: Inter, system-ui, sans-serif;
+  color: #fff;
+  background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%);
+  padding: 2rem;
+  box-sizing: border-box;
 }
 
-.logo{width:160px;margin-bottom:1.8rem}
-
-h1{
-  font-size:3rem;
-  margin:0 0 1rem;
-  font-weight:700;
-  letter-spacing:-0.02em;
+.logo {
+  width: 160px;
+  margin-bottom: 1.8rem;
 }
 
-.tagline{
-  max-width:720px;
-  font-size:1.25rem;
-  line-height:1.45;
-  margin:0 0 2.2rem;
+h1 {
+  font-size: 3rem;
+  margin: 0 0 1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
-.cta{
-  background:#fff;
-  color:#4f46e5;
-  padding:.9rem 2.3rem;
-  border-radius:10px;
-  font-weight:600;
-  text-decoration:none;
-  box-shadow:0 4px 12px rgba(0,0,0,.15);
-  transition:filter .2s ease;
+.tagline {
+  max-width: 720px;
+  font-size: 1.25rem;
+  line-height: 1.45;
+  margin: 0 0 2.2rem;
 }
-.cta:hover{filter:brightness(0.95)}
 
-footer{
-  position:absolute;
-  bottom:24px;
-  font-size:.9rem;
-  opacity:.8;
+.features {
+  display: flex;
+  gap: 2rem;
+  margin: 2rem 0;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.feature {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 1.5rem;
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  max-width: 250px;
+}
+
+.feature h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.feature p {
+  margin: 0;
+  font-size: 0.9rem;
+  opacity: 0.9;
+  line-height: 1.4;
+}
+
+footer {
+  margin-top: 2rem;
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .voxelinsight-landing {
+    padding: 1rem;
+  }
+  
+  h1 {
+    font-size: 2rem;
+  }
+  
+  .tagline {
+    font-size: 1rem;
+  }
+  
+  .features {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .feature {
+    max-width: 100%;
+  }
 }
 

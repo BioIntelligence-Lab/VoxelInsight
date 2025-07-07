@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoxelInsight - AI-Powered Medical Imaging Analysis</title>
+    <link rel="stylesheet" href="/static/landing.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="/static/VoxelInsight.png">
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <img src="/static/VoxelInsight.png" alt="VoxelInsight" class="logo-small">
+                <span class="logo-text">VoxelInsight</span>
+            </div>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#about">About</a>
+                <button class="btn-secondary" onclick="showAuthModal()">Sign In</button>
+                <button class="btn-primary" onclick="showAuthModal('signup')">Get Started</button>
+            </div>
+            <div class="nav-mobile-toggle" onclick="toggleMobileMenu()">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-container">
+            <div class="hero-content">
+                <h1 class="hero-title animate-fade-in">
+                    AI-Powered Medical Imaging Analysis
+                    <span class="gradient-text">Made Simple</span>
+                </h1>
+                <p class="hero-subtitle animate-fade-in-delay">
+                    Query & explore public DICOM and NIfTI datasets, segment anatomy with AI, 
+                    and extract radiomics — all through natural conversation.
+                </p>
+                <div class="hero-cta animate-fade-in-delay-2">
+                    <button class="btn-primary btn-large" onclick="showAuthModal('signup')">
+                        Start Free Trial
+                    </button>
+                    <button class="btn-secondary btn-large" onclick="scrollToFeatures()">
+                        Learn More
+                    </button>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="hero-image">
+                    <img src="/static/VoxelInsight.png" alt="VoxelInsight Platform" class="hero-logo animate-logo">
+                    <div class="floating-card card-1 animate-card-1">
+                        <div class="card-icon">🔍</div>
+                        <div class="card-text">Data Exploration</div>
+                    </div>
+                    <div class="floating-card card-2 animate-card-2">
+                        <div class="card-icon">🤖</div>
+                        <div class="card-text">AI Segmentation</div>
+                    </div>
+                    <div class="floating-card card-3 animate-card-3">
+                        <div class="card-icon">📊</div>
+                        <div class="card-text">Radiomics</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="features">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="animate-on-scroll">Powerful Features for Medical Imaging</h2>
+                <p class="animate-on-scroll-delay">Everything you need to analyze medical imaging data with AI</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card animate-on-scroll">
+                    <div class="feature-icon">🔍</div>
+                    <h3>Data Exploration</h3>
+                    <p>Query IDC, MIDRC, and other public medical imaging datasets with natural language. Find exactly what you need, when you need it.</p>
+                    <ul class="feature-list">
+                        <li>Natural language queries</li>
+                        <li>Multi-source dataset access</li>
+                        <li>Advanced filtering options</li>
+                    </ul>
+                </div>
+                <div class="feature-card animate-on-scroll">
+                    <div class="feature-icon">🤖</div>
+                    <h3>AI Segmentation</h3>
+                    <p>Automatically segment organs and lesions using state-of-the-art TotalSegmentator technology. Get results in minutes, not hours.</p>
+                    <ul class="feature-list">
+                        <li>Organ segmentation</li>
+                        <li>Lesion detection</li>
+                        <li>Batch processing</li>
+                    </ul>
+                </div>
+                <div class="feature-card animate-on-scroll">
+                    <div class="feature-icon">📊</div>
+                    <h3>Radiomics Extraction</h3>
+                    <p>Extract quantitative features for analysis and research. Generate comprehensive reports with just a few clicks.</p>
+                    <ul class="feature-list">
+                        <li>Shape features</li>
+                        <li>Texture analysis</li>
+                        <li>Statistical reports</li>
+                    </ul>
+                </div>
+                <div class="feature-card animate-on-scroll">
+                    <div class="feature-icon">💬</div>
+                    <h3>Conversational AI</h3>
+                    <p>Interact with your data through natural conversation. Ask questions, get insights, and explore your data intuitively.</p>
+                    <ul class="feature-list">
+                        <li>Natural language interface</li>
+                        <li>Context-aware responses</li>
+                        <li>Multi-modal support</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section class="how-it-works">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="animate-on-scroll">How It Works</h2>
+                <p class="animate-on-scroll-delay">Get started in three simple steps</p>
+            </div>
+            <div class="steps-grid">
+                <div class="step animate-on-scroll">
+                    <div class="step-number">1</div>
+                    <h3>Connect Your Data</h3>
+                    <p>Upload your DICOM or NIfTI files, or connect to public datasets through our platform.</p>
+                </div>
+                <div class="step animate-on-scroll">
+                    <div class="step-number">2</div>
+                    <h3>Ask Questions</h3>
+                    <p>Use natural language to query your data, request segmentation, or extract radiomics features.</p>
+                </div>
+                <div class="step animate-on-scroll">
+                    <div class="step-number">3</div>
+                    <h3>Get Results</h3>
+                    <p>Receive instant insights, visualizations, and downloadable reports for your analysis.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- About Section -->
+    <section id="about" class="about">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="animate-on-scroll">About VoxelInsight</h2>
+                <p class="animate-on-scroll-delay">Empowering researchers and healthcare professionals with AI-driven medical imaging analysis</p>
+            </div>
+            <div class="about-content">
+                <div class="about-text animate-on-scroll">
+                    <p>VoxelInsight is a cutting-edge platform that combines the power of artificial intelligence with medical imaging analysis. Our mission is to make advanced medical imaging tools accessible to researchers, radiologists, and healthcare professionals worldwide.</p>
+                    <p>Built on state-of-the-art AI models and open-source medical imaging libraries, VoxelInsight provides an intuitive interface for exploring public datasets, performing automated segmentation, and extracting quantitative features for research and clinical applications.</p>
+                </div>
+                <div class="about-stats animate-on-scroll">
+                    <div class="about-stat">
+                        <div class="stat-icon">🏥</div>
+                        <h4>Medical Focus</h4>
+                        <p>Specialized for medical imaging workflows</p>
+                    </div>
+                    <div class="about-stat">
+                        <div class="stat-icon">🔬</div>
+                        <h4>Research Ready</h4>
+                        <p>Built for academic and clinical research</p>
+                    </div>
+                    <div class="about-stat">
+                        <div class="stat-icon">⚡</div>
+                        <h4>Fast & Efficient</h4>
+                        <p>Get results in minutes, not hours</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section">
+        <div class="container">
+            <div class="cta-content animate-on-scroll">
+                <h2>Ready to Transform Your Medical Imaging Analysis?</h2>
+                <p>Join researchers and healthcare professionals who are already using VoxelInsight to accelerate their work.</p>
+                <div class="cta-buttons">
+                    <button class="btn-primary btn-large" onclick="showAuthModal('signup')">
+                        Start Your Free Trial
+                    </button>
+                    <button class="btn-secondary btn-large" onclick="contactSales()">
+                        Contact Sales
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Authentication Modal -->
+    <div id="authModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="authTitle">Sign In to VoxelInsight</h2>
+                <button class="modal-close" onclick="closeAuthModal()">&times;</button>
+            </div>
+            <div class="auth-tabs">
+                <button class="auth-tab active" onclick="switchAuthTab('signin')">Sign In</button>
+                <button class="auth-tab" onclick="switchAuthTab('signup')">Sign Up</button>
+            </div>
+            <form id="authForm" class="auth-form">
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" required>
+                </div>
+                <button type="submit" class="btn-primary btn-full" id="authSubmit">
+                    Sign In
+                </button>
+            </form>
+            <div class="auth-divider">
+                <span>or</span>
+            </div>
+            <button class="btn-google" onclick="signInWithGoogle()">
+                <svg viewBox="0 0 24 24" class="google-icon">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                Continue with Google
+            </button>
+            <div id="authMessage" class="auth-message"></div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <div class="footer-logo">
+                        <img src="/static/VoxelInsight.png" alt="VoxelInsight" class="logo-small">
+                        <span>VoxelInsight</span>
+                    </div>
+                    <p>AI-powered medical imaging analysis for researchers and healthcare professionals.</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Product</h4>
+                    <ul>
+                        <li><a href="#features">Features</a></li>
+                        <li><a href="/chat">Try Demo</a></li>
+                        <li><a href="#about">About</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Company</h4>
+                    <ul>
+                        <li><a href="#about">About</a></li>
+                        <li><a href="#contact">Contact</a></li>
+                        <li><a href="#privacy">Privacy</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Support</h4>
+                    <ul>
+                        <li><a href="#docs">Documentation</a></li>
+                        <li><a href="#help">Help Center</a></li>
+                        <li><a href="#status">Status</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 VoxelInsight. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="/static/landing.js"></script>
+</body>
+</html> 
