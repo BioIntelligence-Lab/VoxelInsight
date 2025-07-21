@@ -1,9 +1,14 @@
+numpy
+scipy
+scikit-learn
+TotalSegmentator
 openai
 chainlit
+idc_index
 pandas
 matplotlib
 pydicom
-totalsegmentator
 pyradiomics
 nibabel
 dicom2nifti
+
