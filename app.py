@@ -7,6 +7,17 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import pydicom
 import os
+from typing import Dict, Optional
+
+@cl.oauth_callback
+def oauth_callback(
+    provider_id: str,
+    token: str,
+    raw_user_data: Dict[str, str],
+    default_user: cl.User,
+) -> Optional[cl.User]:
+    # Allow all users who pass OAuth authentication
+    return default_user
 
 
 client = AsyncOpenAI()

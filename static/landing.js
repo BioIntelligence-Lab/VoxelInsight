@@ -60,6 +60,11 @@ function contactSales() {
     window.open('mailto:sales@voxelinsight.com?subject=Enterprise%20Inquiry', '_blank');
 }
 
+// Make goToChat globally accessible for HTML buttons
+function goToChat() {
+  window.location.href = '/chat';
+}
+
 // Authentication Modal Functions
 function showAuthModal(mode = 'signin') {
     currentAuthMode = mode;
@@ -149,19 +154,31 @@ authForm.addEventListener('submit', async function(e) {
 // Server Authentication Functions
 async function signIn(email, password) {
     try {
-        const response = await fetch('/api/auth/signin', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ email, password })
-        });
-        
-        const data = await response.json();
-        
-        if (!response.ok) {
-            throw new Error(data.error || 'Sign in failed');
-        }
+        // --- BEGIN: Chainlit GitHub OAuth migration ---
+        // The following authentication API calls are disabled because authentication is now handled by Chainlit via GitHub OAuth.
+        // Remove or comment out all code that calls /api/auth/signin, /api/auth/signup, and /api/auth/user.
+        // Instead, direct users to the chat interface, which will prompt for GitHub login.
+
+        // Commented out: Signin API call
+        // const response = await fetch('/api/auth/signin', {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/json' },
+        //   body: JSON.stringify({ email, password })
+        // });
+
+        // Commented out: Signup API call
+        // const response = await fetch('/api/auth/signup', {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/json' },
+        //   body: JSON.stringify({ email, password })
+        // });
+
+        // Commented out: User info API call
+        // fetch('/api/auth/user')
+
+        // Instead, provide a button or link to the chat interface:
+        goToChat();
+        // --- END: Chainlit GitHub OAuth migration ---
         
         showAuthMessage('Successfully signed in! Redirecting...', 'success');
         setTimeout(() => {
@@ -174,19 +191,31 @@ async function signIn(email, password) {
 
 async function signUp(email, password) {
     try {
-        const response = await fetch('/api/auth/signup', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ email, password })
-        });
-        
-        const data = await response.json();
-        
-        if (!response.ok) {
-            throw new Error(data.error || 'Sign up failed');
-        }
+        // --- BEGIN: Chainlit GitHub OAuth migration ---
+        // The following authentication API calls are disabled because authentication is now handled by Chainlit via GitHub OAuth.
+        // Remove or comment out all code that calls /api/auth/signin, /api/auth/signup, and /api/auth/user.
+        // Instead, direct users to the chat interface, which will prompt for GitHub login.
+
+        // Commented out: Signin API call
+        // const response = await fetch('/api/auth/signin', {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/json' },
+        //   body: JSON.stringify({ email, password })
+        // });
+
+        // Commented out: Signup API call
+        // const response = await fetch('/api/auth/signup', {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/json' },
+        //   body: JSON.stringify({ email, password })
+        // });
+
+        // Commented out: User info API call
+        // fetch('/api/auth/user')
+
+        // Instead, provide a button or link to the chat interface:
+        goToChat();
+        // --- END: Chainlit GitHub OAuth migration ---
         
         showAuthMessage('Account created successfully! Redirecting to chat...', 'success');
         setTimeout(() => {
@@ -314,17 +343,22 @@ document.addEventListener('DOMContentLoaded', function() {
     observeScrollAnimations();
     
     // Check if user is already authenticated by checking server session
-    fetch('/api/auth/user')
-        .then(response => {
-            if (response.ok) {
-                // User is already signed in, redirect to chat
-                window.location.href = '/chat';
-            }
-        })
-        .catch(error => {
-            // User not authenticated, stay on landing page
-            console.log('User not authenticated');
-        });
+    // The following authentication API calls are disabled because authentication is now handled by Chainlit via GitHub OAuth.
+    // Remove or comment out all code that calls /api/auth/signin, /api/auth/signup, and /api/auth/user.
+    // Instead, direct users to the chat interface, which will prompt for GitHub login.
+
+    // Commented out: User info API call
+    // fetch('/api/auth/user')
+    //     .then(response => {
+    //         if (response.ok) {
+    //             // User is already signed in, redirect to chat
+    //             window.location.href = '/chat';
+    //         }
+    //     })
+    //     .catch(error => {
+    //         // User not authenticated, stay on landing page
+    //         console.log('User not authenticated');
+    //     });
     
     // Add entrance animations to hero elements
     setTimeout(() => {

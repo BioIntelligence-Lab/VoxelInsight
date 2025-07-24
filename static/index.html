@@ -20,8 +20,9 @@
             <div class="nav-links">
                 <a href="#features">Features</a>
                 <a href="#about">About</a>
-                <button class="btn-secondary" onclick="showAuthModal()">Sign In</button>
-                <button class="btn-primary" onclick="showAuthModal('signup')">Get Started</button>
+                <!-- Updated for Chainlit GitHub OAuth: Login/Signup buttons now redirect to /chat -->
+                <button class="btn-secondary" onclick="goToChat()">Sign In</button>
+                <button class="btn-primary" onclick="goToChat()">Get Started</button>
             </div>
             <div class="nav-mobile-toggle" onclick="toggleMobileMenu()">
                 <span></span>
@@ -44,7 +45,7 @@
                     and extract radiomics — all through natural conversation.
                 </p>
                 <div class="hero-cta animate-fade-in-delay-2">
-                    <button class="btn-primary btn-large" onclick="showAuthModal('signup')">
+                    <button class="btn-primary btn-large" onclick="goToChat()">
                         Start Free Trial
                     </button>
                     <button class="btn-secondary btn-large" onclick="scrollToFeatures()">
@@ -191,7 +192,7 @@
                 <h2>Ready to Transform Your Medical Imaging Analysis?</h2>
                 <p>Join researchers and healthcare professionals who are already using VoxelInsight to accelerate their work.</p>
                 <div class="cta-buttons">
-                    <button class="btn-primary btn-large" onclick="showAuthModal('signup')">
+                    <button class="btn-primary btn-large" onclick="goToChat()">
                         Start Your Free Trial
                     </button>
                     <button class="btn-secondary btn-large" onclick="contactSales()">
