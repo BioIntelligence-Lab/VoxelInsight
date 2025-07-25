@@ -52,12 +52,12 @@ edit_message = true
     sample_rate = 24000
 
 [UI]
-custom_css = '/public/stylesheet.css'
-
 # Name of the assistant.
-name = "VoxelInsight"
+name = "Assistant"
 
-# default_theme = "dark"
+default_theme = "light"
+custom_css = '/public/stylesheet.css'
+custom_js = '/public/js_script.js'
 
 # layout = "wide"
 

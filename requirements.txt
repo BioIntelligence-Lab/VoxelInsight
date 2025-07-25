@@ -11,3 +11,6 @@ dicom2nifti
 supabase
 python-dotenv
 flask
+idc_index
+ipywidgets
+pathlib
