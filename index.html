@@ -1,1 +1,606 @@
-<h1>Hello!<h1>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>VoxelInsight - AI-Powered Medical Imaging Analysis</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* ===== VoxelInsight Professional Landing Page ===== */
+
+    /* Reset and Base Styles */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.6; color: #1a1a1a; background: #ffffff; overflow-x: hidden;
+    }
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+
+    /* Animation Classes */
+    .animate-fade-in { opacity: 0; transform: translateY(30px); animation: fadeInUp 0.8s ease-out forwards; }
+    .animate-fade-in-delay { opacity: 0; transform: translateY(30px); animation: fadeInUp 0.8s ease-out 0.2s forwards; }
+    .animate-fade-in-delay-2 { opacity: 0; transform: translateY(30px); animation: fadeInUp 0.8s ease-out 0.4s forwards; }
+    .animate-logo { opacity: 0; transform: scale(0.8); animation: logoAppear 1s ease-out 0.6s forwards; }
+    .animate-card-1 { opacity: 0; transform: translateX(-50px) translateY(20px); animation: cardFloat 1s ease-out 1s forwards, float 4s ease-in-out 2s infinite; }
+    .animate-card-2 { opacity: 0; transform: translateX(50px) translateY(-20px); animation: cardFloat 1s ease-out 1.2s forwards, float 4s ease-in-out 2.2s infinite; }
+    .animate-card-3 { opacity: 0; transform: translateX(-30px) translateY(40px); animation: cardFloat 1s ease-out 1.4s forwards, float 4s ease-in-out 2.4s infinite; }
+    .animate-on-scroll { opacity: 0; transform: translateY(50px); transition: all 0.8s ease-out; }
+    .animate-on-scroll.visible { opacity: 1; transform: translateY(0); }
+    .animate-on-scroll-delay { opacity: 0; transform: translateY(50px); transition: all 0.8s ease-out 0.2s; }
+    .animate-on-scroll-delay.visible { opacity: 1; transform: translateY(0); }
+
+    /* Keyframe Animations */
+    @keyframes fadeInUp { to { opacity: 1; transform: translateY(0); } }
+    @keyframes logoAppear { to { opacity: 1; transform: scale(1); } }
+    @keyframes cardFloat { to { opacity: 1; transform: translateX(0) translateY(0); } }
+    @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-15px); } }
+
+    /* Navigation */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px); border-bottom: 1px solid rgba(0, 0, 0, 0.1); z-index: 1000; transition: all 0.3s ease;
+    }
+    .nav-container {
+      max-width: 1200px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; height: 70px;
+    }
+    .nav-logo { display: flex; align-items: center; gap: 12px; }
+    .logo-small { width: 32px; height: 32px; }
+    .logo-text {
+      font-size: 1.5rem; font-weight: 700;
+      background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a { text-decoration: none; color: #1a1a1a; font-weight: 500; transition: color 0.3s ease; }
+    .nav-links a:hover { color: #4f46e5; }
+    .nav-mobile-toggle { display: none; flex-direction: column; gap: 4px; cursor: pointer; }
+    .nav-mobile-toggle span { width: 25px; height: 3px; background: #1a1a1a; transition: all 0.3s ease; }
+
+    /* Buttons */
+    .btn-primary, .btn-secondary {
+      padding: 12px 24px; border: none; border-radius: 8px; font-weight: 600; font-size: 14px;
+      cursor: pointer; transition: all 0.3s ease; text-decoration: none; display: inline-block;
+    }
+    .btn-primary { background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%); color: white; }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(79, 70, 229, 0.3); }
+    .btn-secondary { background: transparent; color: #4f46e5; border: 2px solid #4f46e5; }
+    .btn-secondary:hover { background: #4f46e5; color: white; transform: translateY(-2px); }
+    .btn-large { padding: 16px 32px; font-size: 16px; }
+    .btn-full { width: 100%; }
+
+    /* Hero Section */
+    .hero { padding: 120px 0 80px; background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); position: relative; overflow: hidden; }
+    .hero::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="%23e2e8f0" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+      opacity: 0.5;
+    }
+    .hero-container {
+      max-width: 1200px; margin: 0 auto; padding: 0 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; position: relative; z-index: 1;
+    }
+    .hero-title { font-size: 3.5rem; font-weight: 700; line-height: 1.2; margin-bottom: 24px; color: #1a1a1a; }
+    .gradient-text {
+      background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .hero-subtitle { font-size: 1.25rem; color: #64748b; margin-bottom: 40px; line-height: 1.6; }
+    .hero-cta { display: flex; gap: 16px; margin-bottom: 48px; }
+    .hero-visual { display: flex; justify-content: center; align-items: center; position: relative; height: 400px; }
+    .hero-image { position: relative; width: 300px; height: 360px; display: flex; justify-content: center; align-items: center; }
+    .hero-logo { width: 120px; height: 120px; position: relative; z-index: 2; }
+
+    .floating-card {
+      position: absolute; background: white; padding: 16px 24px; border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); display: flex; align-items: center; gap: 12px;
+      z-index: 3; min-width: 140px;
+    }
+    .card-1 { top: 0%; left: -18%; }
+    .card-2 { top: 40%; right: -45%; }
+    .card-3 { bottom: -12%; left: 10%; }
+    .card-icon { font-size: 1.5rem; }
+    .card-text { font-weight: 600; color: #1a1a1a; font-size: 14px; }
+
+    /* Sections */
+    .section-header { text-align: center; margin-bottom: 60px; }
+    .section-header h2 { font-size: 2.5rem; font-weight: 700; margin-bottom: 16px; color: #1a1a1a; }
+    .section-header p { font-size: 1.125rem; color: #64748b; max-width: 600px; margin: 0 auto; }
+
+    /* Features Section */
+    .features { padding: 80px 0; background: white; }
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 32px; }
+    .feature-card {
+      background: white; padding: 32px; border-radius: 16px; border: 1px solid #e2e8f0; transition: all 0.3s ease;
+    }
+    .feature-card:hover { transform: translateY(-8px); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1); border-color: #4f46e5; }
+    .feature-icon { font-size: 2.5rem; margin-bottom: 20px; }
+    .feature-card h3 { font-size: 1.25rem; font-weight: 600; margin-bottom: 16px; color: #1a1a1a; }
+    .feature-card p { color: #64748b; margin-bottom: 20px; line-height: 1.6; }
+    .feature-list { list-style: none; }
+    .feature-list li { color: #64748b; margin-bottom: 8px; position: relative; padding-left: 20px; }
+    .feature-list li::before { content: '✓'; position: absolute; left: 0; color: #4f46e5; font-weight: 600; }
+
+    /* How It Works Section */
+    .how-it-works { padding: 80px 0; background: #f8fafc; }
+    .steps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 40px; }
+    .step { text-align: center; padding: 32px; }
+    .step-number {
+      width: 60px; height: 60px; background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%); color: white; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 700; margin: 0 auto 24px;
+    }
+    .step h3 { font-size: 1.25rem; font-weight: 600; margin-bottom: 16px; color: #1a1a1a; }
+    .step p { color: #64748b; line-height: 1.6; }
+
+    /* About Section */
+    .about { padding: 80px 0; background: white; }
+    .about-content { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; }
+    .about-text p { color: #64748b; margin-bottom: 20px; line-height: 1.7; font-size: 1.1rem; }
+    .about-stats { display: grid; gap: 24px; }
+    .about-stat { text-align: center; padding: 24px; background: #f8fafc; border-radius: 12px; transition: all 0.3s ease; }
+    .about-stat:hover { transform: translateY(-4px); box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1); }
+    .stat-icon { font-size: 2rem; margin-bottom: 12px; }
+    .about-stat h4 { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; color: #1a1a1a; }
+    .about-stat p { color: #64748b; font-size: 0.9rem; }
+
+    /* CTA Section */
+    .cta-section { padding: 80px 0; background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%); color: white; text-align: center; }
+    .cta-content h2 { font-size: 2.5rem; font-weight: 700; margin-bottom: 16px; }
+    .cta-content p { font-size: 1.125rem; margin-bottom: 32px; opacity: 0.9; }
+    .cta-buttons { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+    .cta-section .btn-primary { background: white; color: #4f46e5; }
+    .cta-section .btn-primary:hover { background: #f8fafc; transform: translateY(-2px); box-shadow: 0 8px 25px rgba(255, 255, 255, 0.3); }
+    .cta-section .btn-secondary { background: transparent; color: white; border: 2px solid white; }
+    .cta-section .btn-secondary:hover { background: white; color: #4f46e5; }
+
+    /* Modal Styles */
+    .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%;
+      background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(5px); }
+    .modal-content { background-color: white; margin: 5% auto; padding: 0; border-radius: 16px; width: 90%; max-width: 400px; position: relative; animation: modalSlideIn 0.3s ease-out; }
+    @keyframes modalSlideIn { from { opacity: 0; transform: translateY(-50px); } to { opacity: 1; transform: translateY(0); } }
+    .modal-header { padding: 24px 24px 0; display: flex; justify-content: space-between; align-items: center; }
+    .modal-header h2 { font-size: 1.5rem; font-weight: 600; color: #1a1a1a; }
+    .modal-close {
+      background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #64748b; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: all 0.3s ease;
+    }
+    .modal-close:hover { background: #f1f5f9; color: #1a1a1a; }
+    .auth-tabs { display: flex; margin: 24px 24px 0; border-bottom: 1px solid #e2e8f0; }
+    .auth-tab { flex: 1; padding: 12px; background: none; border: none; font-size: 14px; font-weight: 500; color: #64748b; cursor: pointer; transition: all 0.3s ease; }
+    .auth-tab.active { color: #4f46e5; border-bottom: 2px solid #4f46e5; }
+    .auth-form { padding: 24px; }
+    .form-group { margin-bottom: 20px; }
+    .form-group label { display: block; margin-bottom: 8px; font-weight: 500; color: #1a1a1a; }
+    .form-group input {
+      width: 100%; padding: 12px 16px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; transition: all 0.3s ease;
+    }
+    .form-group input:focus { outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
+    .auth-divider { text-align: center; margin: 24px; position: relative; }
+    .auth-divider::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: #e2e8f0; }
+    .auth-divider span { background: white; padding: 0 16px; color: #64748b; font-size: 14px; }
+    .btn-google {
+      width: 100%; padding: 12px 16px; background: white; border: 1px solid #e2e8f0; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 14px; font-weight: 500; color: #1a1a1a;
+      cursor: pointer; transition: all 0.3s ease; margin: 0 24px;
+    }
+    .btn-google:hover { background: #f8fafc; border-color: #cbd5e1; }
+    .google-icon { width: 18px; height: 18px; }
+    .auth-message { margin: 16px 24px 24px; padding: 12px 16px; border-radius: 8px; font-size: 14px; text-align: center; }
+    .auth-message.success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .auth-message.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+
+    /* Footer */
+    .footer { background: #1a1a1a; color: white; padding: 60px 0 20px; }
+    .footer-content { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 40px; margin-bottom: 40px; }
+    .footer-logo { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .footer-logo span { font-size: 1.25rem; font-weight: 700; }
+    .footer-section h4 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; }
+    .footer-section ul { list-style: none; }
+    .footer-section ul li { margin-bottom: 8px; }
+    .footer-section ul li a { color: #94a3b8; text-decoration: none; transition: color 0.3s ease; }
+    .footer-section ul li a:hover { color: white; }
+    .footer-bottom { border-top: 1px solid #374151; padding-top: 20px; text-align: center; color: #94a3b8; }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .nav-mobile-toggle { display: flex; }
+      .hero-container { grid-template-columns: 1fr; text-align: center; gap: 40px; }
+      .hero-title { font-size: 2.5rem; }
+      .hero-cta { flex-direction: column; align-items: center; }
+      .hero-image { width: 250px; height: 250px; }
+      .floating-card { padding: 12px 16px; min-width: 120px; }
+      .features-grid { grid-template-columns: 1fr; }
+      .about-content { grid-template-columns: 1fr; gap: 40px; }
+      .steps-grid { grid-template-columns: 1fr; }
+      .footer-content { grid-template-columns: 1fr; text-align: center; }
+      .cta-buttons { flex-direction: column; align-items: center; }
+      /* Mobile menu dropdown */
+      .nav-links.open {
+        display: block; position: absolute; top: 70px; right: 20px; left: 20px; background: white; border: 1px solid #e5e7eb;
+        border-radius: 12px; padding: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+      }
+      .nav-links.open a, .nav-links.open .btn-primary, .nav-links.open .btn-secondary { display: block; margin: 8px 0; text-align: center; }
+    }
+    @media (max-width: 480px) {
+      .container { padding: 0 16px; }
+      .hero { padding: 100px 0 60px; }
+      .hero-title { font-size: 2rem; }
+      .section-header h2 { font-size: 2rem; }
+      .modal-content { width: 95%; margin: 10% auto; }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Navigation -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <div class="nav-logo">
+        <!-- Inline SVG logo (self-contained, no external file) -->
+        <svg class="logo-small" viewBox="0 0 64 64" aria-hidden="true">
+          <defs>
+            <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#4f46e5"/>
+              <stop offset="100%" stop-color="#06b6d4"/>
+            </linearGradient>
+          </defs>
+          <rect x="6" y="6" width="52" height="52" rx="12" fill="url(#g)"/>
+          <text x="32" y="40" text-anchor="middle" font-family="Inter, system-ui" font-size="22" fill="#fff" font-weight="700">VI</text>
+        </svg>
+        <span class="logo-text">VoxelInsight</span>
+      </div>
+
+      <div class="nav-links" id="navLinks">
+        <a href="#features">Features</a>
+        <a href="#about">About</a>
+        <button class="btn-secondary" onclick="goToChat()">Sign In</button>
+        <button class="btn-primary" onclick="goToChat()">Get Started</button>
+      </div>
+
+      <div class="nav-mobile-toggle" onclick="toggleMobileMenu()" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-container">
+      <div class="hero-content">
+        <h1 class="hero-title animate-fade-in">
+          AI-Powered Medical Imaging Analysis
+          <span class="gradient-text">Made Simple</span>
+        </h1>
+        <p class="hero-subtitle animate-fade-in-delay">
+          Query &amp; explore public DICOM and NIfTI datasets, segment anatomy with AI,
+          and extract radiomics — all through natural conversation.
+        </p>
+        <div class="hero-cta animate-fade-in-delay-2">
+          <button class="btn-primary btn-large" onclick="goToChat()">Start Free Trial</button>
+          <button class="btn-secondary btn-large" onclick="scrollToFeatures()">Learn More</button>
+        </div>
+      </div>
+
+      <div class="hero-visual">
+        <div class="hero-image">
+          <!-- Larger inline SVG logo -->
+          <svg class="hero-logo animate-logo" viewBox="0 0 128 128" aria-hidden="true">
+            <defs>
+              <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#4f46e5"/>
+                <stop offset="100%" stop-color="#06b6d4"/>
+              </linearGradient>
+              <filter id="s" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#4f46e5" flood-opacity="0.25"/>
+              </filter>
+            </defs>
+            <rect x="12" y="12" width="104" height="104" rx="22" fill="url(#g2)" filter="url(#s)"/>
+            <text x="64" y="82" text-anchor="middle" font-family="Inter, system-ui" font-size="44" fill="#fff" font-weight="800">VI</text>
+          </svg>
+
+          <div class="floating-card card-1 animate-card-1">
+            <div class="card-icon">🔍</div><div class="card-text">Data Exploration</div>
+          </div>
+          <div class="floating-card card-2 animate-card-2">
+            <div class="card-icon">🤖</div><div class="card-text">AI Segmentation</div>
+          </div>
+          <div class="floating-card card-3 animate-card-3">
+            <div class="card-icon">📊</div><div class="card-text">Radiomics</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section id="features" class="features">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="animate-on-scroll">Powerful Features for Medical Imaging</h2>
+        <p class="animate-on-scroll-delay">Everything you need to analyze medical imaging data with AI</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card animate-on-scroll">
+          <div class="feature-icon">🔍</div>
+          <h3>Data Exploration</h3>
+          <p>Query IDC, MIDRC, and other public medical imaging datasets with natural language. Find exactly what you need, when you need it.</p>
+          <ul class="feature-list">
+            <li>Natural language queries</li>
+            <li>Multi-source dataset access</li>
+            <li>Advanced filtering options</li>
+          </ul>
+        </div>
+
+        <div class="feature-card animate-on-scroll">
+          <div class="feature-icon">🤖</div>
+          <h3>AI Segmentation</h3>
+          <p>Automatically segment organs and lesions using state-of-the-art TotalSegmentator technology. Get results in minutes, not hours.</p>
+          <ul class="feature-list">
+            <li>Organ segmentation</li>
+            <li>Lesion detection</li>
+            <li>Batch processing</li>
+          </ul>
+        </div>
+
+        <div class="feature-card animate-on-scroll">
+          <div class="feature-icon">📊</div>
+          <h3>Radiomics Extraction</h3>
+          <p>Extract quantitative features for analysis and research. Generate comprehensive reports with just a few clicks.</p>
+          <ul class="feature-list">
+            <li>Shape features</li>
+            <li>Texture analysis</li>
+            <li>Statistical reports</li>
+          </ul>
+        </div>
+
+        <div class="feature-card animate-on-scroll">
+          <div class="feature-icon">💬</div>
+          <h3>Conversational AI</h3>
+          <p>Interact with your data through natural conversation. Ask questions, get insights, and explore your data intuitively.</p>
+          <ul class="feature-list">
+            <li>Natural language interface</li>
+            <li>Context-aware responses</li>
+            <li>Multi-modal support</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works Section -->
+  <section class="how-it-works">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="animate-on-scroll">How It Works</h2>
+        <p class="animate-on-scroll-delay">Get started in three simple steps</p>
+      </div>
+
+      <div class="steps-grid">
+        <div class="step animate-on-scroll">
+          <div class="step-number">1</div>
+          <h3>Connect Your Data</h3>
+          <p>Upload your DICOM or NIfTI files, or connect to public datasets through our platform.</p>
+        </div>
+
+        <div class="step animate-on-scroll">
+          <div class="step-number">2</div>
+          <h3>Ask Questions</h3>
+          <p>Use natural language to query your data, request segmentation, or extract radiomics features.</p>
+        </div>
+
+        <div class="step animate-on-scroll">
+          <div class="step-number">3</div>
+          <h3>Get Results</h3>
+          <p>Receive instant insights, visualizations, and downloadable reports for your analysis.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- About Section -->
+  <section id="about" class="about">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="animate-on-scroll">About VoxelInsight</h2>
+        <p class="animate-on-scroll-delay">Empowering researchers and healthcare professionals with AI-driven medical imaging analysis</p>
+      </div>
+
+      <div class="about-content">
+        <div class="about-text animate-on-scroll">
+          <p>VoxelInsight is a cutting-edge platform that combines the power of artificial intelligence with medical imaging analysis. Our mission is to make advanced medical imaging tools accessible to researchers, radiologists, and healthcare professionals worldwide.</p>
+          <p>Built on state-of-the-art AI models and open-source medical imaging libraries, VoxelInsight provides an intuitive interface for exploring public datasets, performing automated segmentation, and extracting quantitative features for research and clinical applications.</p>
+        </div>
+
+        <div class="about-stats animate-on-scroll">
+          <div class="about-stat">
+            <div class="stat-icon">🏥</div>
+            <h4>Medical Focus</h4>
+            <p>Specialized for medical imaging workflows</p>
+          </div>
+          <div class="about-stat">
+            <div class="stat-icon">🔬</div>
+            <h4>Research Ready</h4>
+            <p>Built for academic and clinical research</p>
+          </div>
+          <div class="about-stat">
+            <div class="stat-icon">⚡</div>
+            <h4>Fast &amp; Efficient</h4>
+            <p>Get results in minutes, not hours</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Section -->
+  <section class="cta-section">
+    <div class="container">
+      <div class="cta-content animate-on-scroll">
+        <h2>Ready to Transform Your Medical Imaging Analysis?</h2>
+        <p>Join researchers and healthcare professionals who are already using VoxelInsight to accelerate their work.</p>
+        <div class="cta-buttons">
+          <button class="btn-primary btn-large" onclick="goToChat()">Start Your Free Trial</button>
+          <button class="btn-secondary btn-large" onclick="contactSales()">Contact Sales</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Authentication Modal (static demo) -->
+  <div id="authModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="authTitle">Sign In to VoxelInsight</h2>
+        <button class="modal-close" onclick="closeAuthModal()" aria-label="Close">&times;</button>
+      </div>
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabSignIn" onclick="switchAuthTab('signin')">Sign In</button>
+        <button class="auth-tab" id="tabSignUp" onclick="switchAuthTab('signup')">Sign Up</button>
+      </div>
+      <form id="authForm" class="auth-form" onsubmit="fakeAuth(event)">
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input id="email" type="email" required/>
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input id="password" type="password" required/>
+        </div>
+        <button type="submit" class="btn-primary btn-full" id="authSubmit">Sign In</button>
+      </form>
+      <div class="auth-divider"><span>or</span></div>
+      <button class="btn-google" onclick="continueWithGoogle()">
+        <svg viewBox="0 0 24 24" class="google-icon" aria-hidden="true">
+          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC04"/>
+          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+        </svg>
+        Continue with Google
+      </button>
+      <div id="authMessage" class="auth-message" role="status" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-section">
+          <div class="footer-logo">
+            <!-- Small inline logo again -->
+            <svg class="logo-small" viewBox="0 0 64 64" aria-hidden="true">
+              <defs><linearGradient id="gf" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#06b6d4"/></linearGradient></defs>
+              <rect x="6" y="6" width="52" height="52" rx="12" fill="url(#gf)"/>
+              <text x="32" y="40" text-anchor="middle" font-family="Inter, system-ui" font-size="22" fill="#fff" font-weight="700">VI</text>
+            </svg>
+            <span>VoxelInsight</span>
+          </div>
+          <p>AI-powered medical imaging analysis for researchers and healthcare professionals.</p>
+        </div>
+
+        <div class="footer-section">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#try">Try Demo</a></li>
+            <li><a href="#about">About</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-section">
+          <h4>Company</h4>
+          <ul>
+            <li><a href="#about">About</a></li>
+            <li><a href="#contact" onclick="contactSales()">Contact</a></li>
+            <li><a href="#privacy" onclick="alert('Privacy policy coming soon.');">Privacy</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-section">
+          <h4>Support</h4>
+          <ul>
+            <li><a href="#docs" onclick="alert('Docs coming soon.');">Documentation</a></li>
+            <li><a href="#help" onclick="alert('Help center coming soon.');">Help Center</a></li>
+            <li><a href="#status" onclick="alert('Status page coming soon.');">Status</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <p>&copy; 2025 VoxelInsight. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Mobile menu
+    function toggleMobileMenu() {
+      const links = document.getElementById('navLinks');
+      links.classList.toggle('open');
+    }
+
+    // Smooth scroll
+    function scrollToFeatures() {
+      document.querySelector('#features').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // Redirects (adjust /chat to your route if needed)
+    function goToChat() {
+      // For GitHub Pages, this will go to /chat relative to the site root.
+      // Replace with your hosted chat URL if applicable.
+      window.location.href = '/chat';
+    }
+
+    function contactSales() {
+      window.location.href = 'mailto:hello@voxelinsight.ai?subject=VoxelInsight%20Inquiry&body=Hi%20VoxelInsight%20team,';
+    }
+
+    // Modal helpers (static demo)
+    const modal = document.getElementById('authModal');
+    function openAuthModal() { modal.style.display = 'block'; }
+    function closeAuthModal() { modal.style.display = 'none'; }
+    window.addEventListener('click', (e) => { if (e.target === modal) closeAuthModal(); });
+
+    function switchAuthTab(tab) {
+      const title = document.getElementById('authTitle');
+      const btn = document.getElementById('authSubmit');
+      const signIn = document.getElementById('tabSignIn');
+      const signUp = document.getElementById('tabSignUp');
+
+      if (tab === 'signup') {
+        title.textContent = 'Create your VoxelInsight account';
+        btn.textContent = 'Create Account';
+        signIn.classList.remove('active'); signUp.classList.add('active');
+      } else {
+        title.textContent = 'Sign In to VoxelInsight';
+        btn.textContent = 'Sign In';
+        signUp.classList.remove('active'); signIn.classList.add('active');
+      }
+    }
+
+    function fakeAuth(e) {
+      e.preventDefault();
+      const msg = document.getElementById('authMessage');
+      msg.className = 'auth-message success';
+      msg.textContent = 'This is a static demo. Replace with your auth logic.';
+      setTimeout(closeAuthModal, 1500);
+    }
+
+    function continueWithGoogle() {
+      const msg = document.getElementById('authMessage');
+      msg.className = 'auth-message error';
+      msg.textContent = 'Google sign-in not available on static demo.';
+    }
+
+    // Scroll-triggered animations
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) entry.target.classList.add('visible');
+      });
+    }, { threshold: 0.15 });
+
+    document.querySelectorAll('.animate-on-scroll, .animate-on-scroll-delay').forEach(el => observer.observe(el));
+  </script>
+</body>
+</html>
