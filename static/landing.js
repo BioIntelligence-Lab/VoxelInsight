@@ -1,18 +1,3 @@
-// ===== VoxelInsight Landing Page JavaScript =====
-
-// Initialize Supabase client
-const SUPABASE_URL = 'https://crbazohhljdegpvakwff.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNyYmF6b2hobGpkZWdwdmFrd2ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE4NDIzNTUsImV4cCI6MjA2NzQxODM1NX0.BlM0_YwvGnBb-slNTPB7hRUsvcaHfeCCfNXzKdR4VVY';
-
-// Initialize Supabase client (you'll need to replace with your actual credentials)
-let supabase;
-try {
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-} catch (error) {
-    console.log('Supabase not configured yet. Please add your credentials.');
-}
-
-// Global variables
 let currentAuthMode = 'signin';
 
 // DOM Elements

@@ -14,3 +14,10 @@ flask
 idc_index
 ipywidgets
 pathlib
+regex
+tqdm
+monai
+torch
+tabulate
+plotly
+asyncpg

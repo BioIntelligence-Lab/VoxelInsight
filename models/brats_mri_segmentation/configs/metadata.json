@@ -1,0 +1,112 @@
+{
+    "schema": "https://github.com/Project-MONAI/MONAI-extra-test-data/releases/download/0.8.1/meta_schema_20240725.json",
+    "version": "0.5.4",
+    "changelog": {
+        "0.5.4": "enhanced metadata with improved descriptions and task specification",
+        "0.5.3": "update to huggingface hosting",
+        "0.5.2": "use monai 1.4 and update large files",
+        "0.5.1": "update to use monai 1.3.1",
+        "0.5.0": "add load_pretrain flag for infer",
+        "0.4.9": "add checkpoint loader for infer",
+        "0.4.8": "fix the wrong GPU index issue of multi-node",
+        "0.4.7": "enhance prepare datalist file",
+        "0.4.6": "add dataset dir example",
+        "0.4.5": "update ONNX-TensorRT descriptions",
+        "0.4.4": "update error links",
+        "0.4.3": "add the ONNX-TensorRT way of model conversion",
+        "0.4.2": "fix mgpu finalize issue",
+        "0.4.1": "add non-deterministic note",
+        "0.4.0": "adapt to BundleWorkflow interface",
+        "0.3.9": "black autofix format and add name tag",
+        "0.3.8": "modify dataset key name",
+        "0.3.7": "restructure readme to match updated template",
+        "0.3.6": "added train/val graphs",
+        "0.3.5": "update prepare datalist function",
+        "0.3.4": "update output format of inference",
+        "0.3.3": "update to use monai 1.0.1",
+        "0.3.2": "enhance readme on commands example",
+        "0.3.1": "fix license Copyright error",
+        "0.3.0": "update license files",
+        "0.2.1": "fix network_data_format error",
+        "0.2.0": "unify naming",
+        "0.1.1": "update for MetaTensor",
+        "0.1.0": "complete the model package"
+    },
+    "monai_version": "1.4.0",
+    "pytorch_version": "2.4.0",
+    "numpy_version": "1.24.4",
+    "required_packages_version": {
+        "nibabel": "5.2.1",
+        "pytorch-ignite": "0.4.11",
+        "scikit-learn": "1.5.1",
+        "tensorboard": "2.17.0"
+    },
+    "supported_apps": {},
+    "name": "BraTS MRI segmentation",
+    "task": "Multimodal Brain Tumor Subregion Segmentation",
+    "description": "3D segmentation model for delineating brain tumor subregions from multimodal MRI scans (T1, T1c, T2, FLAIR). The model processes 4-channel input volumes with 1mm isotropic resolution and outputs 3-channel segmentation masks for tumor core (TC), whole tumor (WT), and enhancing tumor (ET).",
+    "authors": "MONAI team",
+    "copyright": "Copyright (c) MONAI Consortium",
+    "data_source": "BraTS 2018 Challenge Dataset (https://www.med.upenn.edu/sbia/brats2018/data.html)",
+    "data_type": "nibabel",
+    "image_classes": "4 channel data, T1c, T1, T2, FLAIR at 1x1x1 mm",
+    "label_classes": "3 channel data, channel 0 for Tumor core, channel 1 for Whole tumor, channel 2 for Enhancing tumor",
+    "pred_classes": "3 channels data, same as label_classes",
+    "eval_metrics": {
+        "val_mean_dice": 0.8518,
+        "val_mean_dice_tc": 0.8559,
+        "val_mean_dice_wt": 0.9026,
+        "val_mean_dice_et": 0.7905
+    },
+    "intended_use": "This is an example, not to be used for diagnostic purposes",
+    "references": [
+        "Myronenko, Andriy. '3D MRI brain tumor segmentation using autoencoder regularization.' International MICCAI Brainlesion Workshop. Springer, Cham, 2018. https://arxiv.org/abs/1810.11654"
+    ],
+    "network_data_format": {
+        "inputs": {
+            "image": {
+                "type": "image",
+                "format": "magnitude",
+                "modality": "MR",
+                "num_channels": 4,
+                "spatial_shape": [
+                    "8*n",
+                    "8*n",
+                    "8*n"
+                ],
+                "dtype": "float32",
+                "value_range": [],
+                "is_patch_data": true,
+                "channel_def": {
+                    "0": "T1c",
+                    "1": "T1",
+                    "2": "T2",
+                    "3": "FLAIR"
+                }
+            }
+        },
+        "outputs": {
+            "pred": {
+                "type": "image",
+                "format": "segmentation",
+                "num_channels": 3,
+                "spatial_shape": [
+                    "8*n",
+                    "8*n",
+                    "8*n"
+                ],
+                "dtype": "float32",
+                "value_range": [
+                    0,
+                    1
+                ],
+                "is_patch_data": true,
+                "channel_def": {
+                    "0": "Tumor core",
+                    "1": "Whole tumor",
+                    "2": "Enhancing tumor"
+                }
+            }
+        }
+    }
+}

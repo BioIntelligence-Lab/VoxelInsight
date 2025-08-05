@@ -215,7 +215,7 @@ oculomotor_muscles	optic_nerve_right*
 lung_nodules	lung
 lung_nodules	lung_nodules
 kidney_cysts	kidney_cyst_left
-kidney_cysts	kidney_cyst_right (strongly improved accuracy compared to kidney_cysts inside of total task)
+kidney_cysts	kidney_cyst_right 
 breasts	breast
 liver_segments	liver_segment_1
 liver_segments	liver_segment_2
@@ -224,22 +224,21 @@ liver_segments	liver_segment_4
 liver_segments	liver_segment_5
 liver_segments	liver_segment_6
 liver_segments	liver_segment_7
-liver_segments	liver_segment_8 (Couinaud segments)
+liver_segments	liver_segment_8 
 craniofacial_structures	mandible
 craniofacial_structures	teeth_lower
 craniofacial_structures	skull
 craniofacial_structures	head
 craniofacial_structures	sinus_maxillary
 craniofacial_structures	sinus_frontal
-craniofacial_structures	teeth_upper *: These models are not trained on the full totalsegmentator dataset but on some small other datasets. Therefore
-craniofacial_structures	expect them to work less robustly.
+craniofacial_structures	teeth_upper 
 heartchambers_highres	myocardium
 heartchambers_highres	atrium_left
 heartchambers_highres	ventricle_left
 heartchambers_highres	atrium_right
 heartchambers_highres	ventricle_right
 heartchambers_highres	aorta
-heartchambers_highres	pulmonary_artery (trained on sub-millimeter resolution)
+heartchambers_highres	pulmonary_artery 
 appendicular_bones	patella
 appendicular_bones	tibia
 appendicular_bones	fibula
@@ -257,7 +256,7 @@ tissue_types	skeletal_muscle
 tissue_4_types	subcutaneous_fat
 tissue_4_types	torso_fat
 tissue_4_types	skeletal_muscle
-tissue_4_types	intermuscular_fat (in contrast to tissue_types skeletal_muscle is split into two classes: muscle and fat)
+tissue_4_types	intermuscular_fat 
 brain_structures	brainstem
 brain_structures	subarachnoid_space
 brain_structures	venous_sinuses
@@ -294,5 +293,5 @@ thigh_shoulder_muscles	trapezius
 thigh_shoulder_muscles	pectoralis_minor
 thigh_shoulder_muscles	serratus_anterior
 thigh_shoulder_muscles	teres_major
-thigh_shoulder_muscles	"triceps_brachi"""
+thigh_shoulder_muscles	triceps_brachi
 coronary_arteries	coronary_arteries (also works on non-contrast images)
