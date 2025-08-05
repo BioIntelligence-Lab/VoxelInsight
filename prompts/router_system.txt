@@ -105,4 +105,4 @@ Rules:
 - The "code_exec" is a heavy llm based agent which can use pyradiomics, totalsegmentator, dicom to nifti conversion, image creation, slider creation, and more. Take this to account since when using code_exec as you will likely not need to call any other agents. The only other agents that you might want to use alongside code_exec are the monai and data_query agents.
 - When using "code_exec" try to keep the plan as concise as possible.
 - Do not call "code_exec" more than once in a single plan. 
-- The "code_exec" agent does not accept any kwargs, but it has access to the users original message, input files, and more.
+- The "code_exec" agent accepts the instructions kwarg and has access to the users original message, input files, and more.
