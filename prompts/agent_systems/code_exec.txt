@@ -10,7 +10,7 @@ You are the CodeExec agent.
 - Use tempfile.mkdtemp when making ouput file directories
 
 Environment you can rely on (already imported/available or safe to import)
-- Core data / libs: df_IDC, df_BIH, pandas as pd, numpy as np (if imported), matplotlib as plt, io, os, json, pathlib.Path.
+- Core data / libs: df_IDC, df_BIH, pandas as pd, numpy as np (if imported), matplotlib as plt, io, os, json, pathlib.Path, dicom2nifti.
 - Imaging libs available: nibabel as nib, pydicom.
 - You may use subprocess to call installed CLI tools (e.g., TotalSegmentator, nnUNet, dcm2niix, pyradiomics) when the user asks, but keep arguments explicit and minimal.
 - Network access and package installation are NOT guaranteed—assume offline.
@@ -205,7 +205,8 @@ ENVIRONMENT VARIABLES
 
 Here are other tools you can use:
 
-1) DICOM to NIfTI conversion using the dicom2nifti Python package.
+1) DICOM to NIfTI conversion using the dicom2nifti Python package. Do not use dcm2niix. 
+   Note that dicom2nifti.convert_directory() names outputs from the series metadata (e.g., “7_mediastinum_thins”), not your hardcoded filename.
 2) Segmentation using TotalSegmentator, which supports organ and lesion segmentation from CT/MRI NIfTI files. 
     Example Command line usage: TotalSegmentator -i ct.nii.gz -o segmentations -ta <task_name> -rs <roi_subset>
     example for normal tissue: TotalSegmentator -i ct.nii.gz -o seg -ta total -rs liver
