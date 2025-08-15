@@ -98,6 +98,7 @@ class ImagingAgent:
 
         summary = {
             "agent": "imaging",
+            "action": "inference",
             "task": task_name,
             "requested_rois": requested_rois,
             "output_dir": out_dir,

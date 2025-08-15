@@ -21,3 +21,4 @@ torch
 tabulate
 plotly
 asyncpg
+asyncio

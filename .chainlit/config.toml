@@ -19,6 +19,8 @@ cache = false
 allow_origins = ["*"]
 
 [features]
+prompt_playground = true
+
 # Process and display HTML in messages. This can be a security risk (see https://stackoverflow.com/questions/19603097/why-is-it-dangerous-to-render-user-generated-html-or-javascript)
 unsafe_allow_html = false
 
@@ -29,7 +31,7 @@ latex = false
 auto_tag_thread = true
 
 # Allow users to edit their own messages
-edit_message = true
+edit_message = false
 
 # Authorize users to spontaneously upload files with messages
 [features.spontaneous_file_upload]
@@ -64,16 +66,18 @@ default_theme = "light"
 # Description of the assistant. This is used for HTML tags.
 # description = ""
 
+default_collapse_content = true
+
 # Chain of Thought (CoT) display mode. Can be "hidden", "tool_call" or "full".
 cot = "full"
 
 # Specify a CSS file that can be used to customize the user interface.
 # The CSS file can be served from the public directory or via an external link.
-custom_css = "/public/stylesheet.css"
+# custom_css = "/public/styles.css"
 
 # Specify a Javascript file that can be used to customize the user interface.
 # The Javascript file can be served from the public directory.
-custom_js = "/public/js_script.js"
+#custom_js = "/public/js_script.js"
 
 # Specify a custom meta image url.
 # custom_meta_image_url = "https://chainlit-cloud.s3.eu-west-3.amazonaws.com/logo/chainlit_banner.png"

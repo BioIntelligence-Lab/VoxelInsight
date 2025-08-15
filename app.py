@@ -1,8 +1,10 @@
 import os
+from agents.universeg import UniversegAgent
 import chainlit as cl
 from dotenv import load_dotenv
 from pathlib import Path
 import tempfile, shutil, asyncio, zipfile, pandas as pd
+import asyncio
 import plotly.graph_objects as go
 from typing import Dict, Optional
 from chainlit.types import ThreadDict
@@ -21,6 +23,8 @@ from agents.monai_infer import MONAIAgent
 from agents.radiomics import RadiomicsAgent
 from agents.viz_slider import VizSliderAgent
 from agents.code_exec import CodeExecAgent
+from agents.dicom_to_nifti import Dicom2NiftiPyAgent
+from agents.universeg import UniversegAgent
 
 @cl.oauth_callback
 def oauth_callback(
@@ -43,22 +47,19 @@ df_IDC = IDC_Client.index
 df_BIH = pd.DataFrame()
 df_MIDRC = pd.DataFrame()
 
-
-ct_mappings = Path("Data/TotalSegmentatorMappingsCT.tsx").read_text()
-
 BASE_PROMPT   = Path("prompts/router_system.txt").read_text()
-TSV1_TEXT     = Path("Data/TotalSegmentatorMappingsCT.tsx").read_text()          
-TSV2_TEXT     = Path("Data/TotalSegmentatorMappingsMRI.tsx").read_text()  
+ct_mappings     = Path("Data/TotalSegmentatorMappingsCT.txt").read_text()          
+mri_mappings    = Path("Data/TotalSegmentatorMappingsMRI.txt").read_text()  
 
 #router
 router = RouterAgent(
-    available_agents=["data_query", "imaging", "monai", "radiomics", "viz", "code_exec", "viz_slider"],
+    available_agents=["data_query", "imaging", "monai", "radiomics", "viz", "code_exec", "viz_slider", "dicom2nifti", "universeg"],
     system_prompt=(
         BASE_PROMPT
         + "\n\n---\n### ROI to task mapping table for TotalSegmentator CT (tsv)\n" 
-        + TSV1_TEXT
+        + ct_mappings
         + "\n\n---\n### ROI to task mapping table for TotalSegmentator MRI (tsv)\n"
-        + TSV2_TEXT
+        + mri_mappings
     )
 )
 
@@ -70,8 +71,10 @@ agents = {
     "radiomics": RadiomicsAgent(system_prompt=Path("prompts/agent_systems/radiomics.txt").read_text()),
     "code_exec": CodeExecAgent(system_prompt=Path("prompts/agent_systems/code_exec.txt").read_text()),
     "viz_slider": VizSliderAgent(),
-    "monai": MONAIAgent(system_prompt=Path("prompts/agent_systems/monai.txt").read_text()),
-}
+    "monai": MONAIAgent(system_prompt=Path("prompts/agent_systems/monai.txt").read_text(), additional_context=Path("Data/monai_bundles_instructions.txt").read_text()),
+    "dicom2nifti": Dicom2NiftiPyAgent(),
+    "universeg": UniversegAgent(),
+    }
 
 async def _zip_paths(paths, zip_path: Path):
     def _worker():
@@ -129,20 +132,33 @@ async def on_message(message: cl.Message):
                 ),
                 elements=[cl.File(name=zip_path.name, path=str(zip_path))]
             ).send()
-    elif isinstance(res, dict) and res.get("agent") == "imaging":
-        files_to_package = res.get("output_dir") or []
+    elif isinstance(res, dict) and res.get("action") == "inference":
+        output_dir = res.get("output_dir")
+        segmentations = res.get("segmentations", [])
 
-        if not files_to_package:
-            await cl.Message(content="No files were downloaded.").send()
+        if not output_dir and not segmentations:
+            await cl.Message(content="No files were created.").send()
         else:
-            zip_tmpdir = Path(tempfile.mkdtemp(prefix="vi_zip_"))
-            zip_path = zip_tmpdir / "ts_download.zip"
-            await _zip_paths(files_to_package, zip_path)
+            if segmentations:
+                files_to_package = segmentations
+            else:
+                output_path = Path(output_dir)
+                if output_path.exists() and output_path.is_dir():
+                    files_to_package = [str(f) for f in output_path.rglob("*") if f.is_file()]
+                else:
+                    files_to_package = []
+            
+            if not files_to_package:
+                await cl.Message(content="No files were created.").send()
+            else:
+                zip_tmpdir = Path(tempfile.mkdtemp(prefix="vi_zip_"))
+                zip_path = zip_tmpdir / "download.zip"
+                await _zip_paths(files_to_package, zip_path)
             await cl.Message(
                 content=(
-                    "📥 **Segmentation complete**\n"
-                    f"- Items: {len(files_to_package)}\n"
-                    "Click to download the segmentation masks:"
+                    "📥 **Inference complete**\n"
+                    f"- Items: {len(files_to_package)}\n\n"
+                    "Click to download the output:"
                 ),
                 elements=[cl.File(name=zip_path.name, path=str(zip_path))]
             ).send()

@@ -82,17 +82,25 @@ class MONAIAgent:
     name = "monai"
     model = "gpt-4o"
 
-    def __init__(self, system_prompt: str):
+    def __init__(self, system_prompt: str, additional_context: str):
         key = os.getenv("OPENAI_API_KEY")
         self.client = AsyncOpenAI(api_key=key)
         self.system_prompt = system_prompt
+        self.additional_context = additional_context
 
     async def run(self, task: Task, state: ConversationState) -> TaskResult:
         user_text = task.kwargs.get("instructions") or task.user_msg
         context = self._build_llm_context(task, state)
 
         messages = [
-            {"role": "system", "content": self.system_prompt},
+            {
+                "role": "system",
+                "content": (
+                    f"{self.system_prompt}\n\n"
+                    "=== Monai Bundle Instructions ===\n"
+                    f"{self.additional_context}\n\n"
+                ),
+            },
             {
                 "role": "user",
                 "content": (

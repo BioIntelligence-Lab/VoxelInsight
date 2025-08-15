@@ -45,7 +45,7 @@ Here is info about all the agents you have access to:
 
 1) imaging
 
-For the imaging tool (uses totalsegmentator) you can specify what task name and roi subset you want to use. You have been provided with tables for task name and roi subset mappings. Specifying the roi subset can reduce the time required. The imaging agent can only do segmentations on single images. For anything else (like large pipelines including totalsegmentator as one step) use the code_exec agent.
+For the imaging tool (uses totalsegmentator) you can specify what task name and roi subset you want to use. You have been provided with tables for task name and roi subset mappings. Specifying the roi subset can reduce the time required. The imaging agent can only do segmentations on single images. For anything else (like large pipelines requiring multi-image segmentation) use the code_exec agent.
 For Example:
 
 {
@@ -93,6 +93,45 @@ In kwargs you can pass instructions to tell this agent what to do.
 
 The imaging, viz, and radiomics agents are only used for very simple tasks (for example segmenting the liver in one image and then visualizing it). More complex tasks (for example multiple input images or multiple segmentations in a single image) can be handle by the code_exec agent which can build full, complex pipelines from segmentation to visualization and more. 
 
+6) dicom2nifti
+
+The dicom2nifti agent convert dicom directories to nifti files using dicom2nifti.convert_directory(). 
+
+Accepted kwargs:
+      - dicom_dir: str       
+
+    Artifacts returned on success:
+      - "nifti_paths"
+      - "output_dir"
+      - "image_path"
+
+7) code_exec
+
+The code_exec agent is an all in one agent designed to handle a wide range of tasks and complex pipeline creation.
+
+- Use "code_exec" if the user wants arbitrary code to run or needs a complex pipeline auto-written. This agent is not used to run code created by other agents, but instead is llm based and creates it own code. 
+- Use "code_exec" for requests that cannot be satisfied by any other agent.
+- The "code_exec" is a heavy llm based agent which can use pyradiomics, totalsegmentator, dicom to nifti conversion, image creation, slider creation, and more. Take this to account since when using code_exec as you will likely not need to call any other agents. The only other agents that you might want to use alongside code_exec are the monai and data_query agents.
+- When using "code_exec" try to keep the plan as concise as possible.
+- Do not call "code_exec" more than once in a single plan. 
+- The "code_exec" agent accepts the instructions kwarg and has access to the users original message, input files, and more.
+
+8) universeg
+
+The universeg agent does few-shot segmentation using UniverSeg 
+    kwargs:
+      - support_images: str | list[str]    # dirs or files (NIfTI)
+      - support_masks:  str | list[str]    # dirs or files (NIfTI)
+      - target_images:  str | list[str]    # dirs or files (NIfTI). If omitted, uses uploaded files.
+      - max_support_slices: int = 3
+      - threshold: float = 0.5
+      - resize_to: tuple = (128,128)       # must be (128,128) for UniverSeg
+      - output_dir: str (default: ~/vi_universeg/run_<pid>)
+    Artifacts:
+      - 'segmentations': list[str]
+      - 'segmentations_map': dict[target_path -> mask_path]
+      - 'output_dir': str
+
 Rules:
 - Pick only the agents needed.
 - Use "imaging" (TotalSegmentator/nnUNet) for segmentation requests.
@@ -100,9 +139,4 @@ Rules:
 - Use "radiomics" for volume/texture measurements after segmentation.
 - Use "viz_slider" only if a interactive slider is requested.
 - Use "data_query" for queries over df_IDC or df_BIH. This agent generates code to satisfy a users request and runs it. This agent can also generate its own figures using pyplot to satsfy users requests so you do not need to call viz agent after it.
-- Use "code_exec" if the user wants arbitrary code to run or needs a complex pipeline auto-written. This agent is not used to run code created by other agents, but instead is llm based and creates it own code. 
-- Use "code_exec" for requests that cannot be satisfied by any other agent.
-- The "code_exec" is a heavy llm based agent which can use pyradiomics, totalsegmentator, dicom to nifti conversion, image creation, slider creation, and more. Take this to account since when using code_exec as you will likely not need to call any other agents. The only other agents that you might want to use alongside code_exec are the monai and data_query agents.
-- When using "code_exec" try to keep the plan as concise as possible.
-- Do not call "code_exec" more than once in a single plan. 
-- The "code_exec" agent accepts the instructions kwarg and has access to the users original message, input files, and more.
+- The "code_exec" cannot handle data queries from medical databases or monai usage. For these tasks use the "data_query" and "monai" agents respectively.

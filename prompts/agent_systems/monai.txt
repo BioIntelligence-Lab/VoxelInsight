@@ -22,11 +22,11 @@ Inputs to expect (provided in the user message context):
 - Helper: _normalize_to_HWD(x) to make masks (H,W,D) format
 
 Instructions: 
+- Download the necessary bundle using monai.bundle.download() (don't assume they are already downloaded)
+- Make sure user inputted images are in the proper format expected by a given bundle. You have been give monai bundle instructions specifying all of these details. Also ensure you account for the bundles outpat format to produce the proper output expected by the user. You may need to add additional post processing steps after the run_monai_bundle() function to satisfy the users request.
 - You can make calls to the function run_monai_bundle (do NOT try to import it from monai.bundle or any other package, just assume it's available). To use this function you do not need to import anything and can simply call and use it directly with run_monai_bundle(). You are provided with the functions code.
 - The bundle_dir passed to the run_monai_bundle function must be in the format models/[bundle name]. For example models/spleen_ct_segmentation.
 - The run_monai_bundle function may not work with every bundle. In these cases create your own function. Always make sure the function you create as as similar as possible to the provided run_monai_bundle function, only including necessary changes.
-- When a 2‑D network is applied to a 3‑D volume, always split the depth (Z) axis into separate slice batches — or drop it if you intend to segment a single slice — so that the input’s spatial rank matches the model’s roi_size; otherwise MONAI will raise a “sequence length” mismatch error during sliding‑window inference.
-- These are the available bundles already downloaded: brats_mri_segmentation. You may download other bundle if not present using monai.bundle.download(). 
 - If you cannot proceed (e.g., missing image), still assign a string to res_query describing the issue.
 - If you're outputing a mask, make sure it is in the (H,W,D) format. You are provided with the _normalize_to_HWD(x) to do this, but you may create your own functions if necessary.
 - Do not make temorary directories, instead use tempfile.mkdtemp(...)

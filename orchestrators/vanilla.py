@@ -4,6 +4,7 @@ import re
 import json
 import copy
 import chainlit as cl
+import asyncio
 from typing import Any, Dict, List
 from core.state import Task, ConversationState
 
@@ -104,11 +105,13 @@ def _route_to_plan(route: Dict[str, Any], next_tasks: List[Task]) -> List[Dict[s
 
 async def run_pipeline(router, agents, task: Task, state: ConversationState):
 
-    with cl.Step(name="Routing"):
+    async with cl.Step(name="Routing") as step:
         router_res = await router.run(task, state)
         route_dict = router_res.output if isinstance(router_res.output, dict) else {}
         plan = _route_to_plan(route_dict, getattr(router_res, "next_tasks", []))
-        await cl.Message(content=f"**Plan**:\n```json\n{json.dumps({'plan': plan}, indent=2)}\n```").send()
+        step.output = f"**Plan**:\n```json\n{json.dumps({'plan': plan}, indent=2)}\n```"
+        await cl.Message(content="Plan created!").send()
+        #await cl.Message(content=f"**Plan**:\n```json\n{json.dumps({'plan': plan}, indent=2)}\n```").send()
 
     # Build a context available to placeholders
     ctx: Dict[str, Any] = {
@@ -119,10 +122,10 @@ async def run_pipeline(router, agents, task: Task, state: ConversationState):
     result_payload = None
 
     # Execute steps in order
-    for idx, step in enumerate(plan):
-        step_id  = step.get("id") or f"step{idx+1}"
-        agent_nm = step["agent"]
-        raw_kwargs = step.get("kwargs", {})
+    for idx, stage in enumerate(plan):
+        step_id  = stage.get("id") or f"step{idx+1}"
+        agent_nm = stage["agent"]
+        raw_kwargs = stage.get("kwargs", {})
 
         raw_kwargs.setdefault("input_files",  task.files or [])
         raw_kwargs.setdefault("chained_files", state.memory.get("files", []))
@@ -153,15 +156,42 @@ async def run_pipeline(router, agents, task: Task, state: ConversationState):
         child = Task(user_msg=task.user_msg, files=task.files, intent=step_id, kwargs=kwargs)
         agent = agents[agent_nm]
 
-        async with cl.Step(name=f"{agent_nm} ({idx+1}/{len(plan)})"):
-            msg = cl.Message(content=f"**{agent_nm}** started…")
-            await msg.send()
+        is_llm_agent = hasattr(agent, 'model') and agent.model is not None
 
-            try:
-                res = await agent.run(child, state)
-            except Exception as e:
-                await cl.Message(content=f"**{agent_nm}** failed:\n```\n{e}\n```").send()
-                raise
+        async with cl.Step(name=f"{agent_nm} ({idx+1}/{len(plan)})") as step:
+            if is_llm_agent:
+                step.output = "**LLM Agent** - Generating and executing code...\n\n```python\n"
+            else:
+                step.output = f"🔧 **{agent_nm}** - Processing...\n\n"
+            await step.update()
+                
+            if is_llm_agent:    
+                try:
+                    res = await agent.run(child, state)
+                    
+                    if hasattr(res, 'artifacts') and res.artifacts and 'code' in res.artifacts:
+                        code = res.artifacts['code']
+                        # Add code to step output
+                        step.output += code + "\n```\n\n**LLM Agent completed successfully!**"
+                    else:
+                        step.output += "\n```\n\n**LLM Agent completed successfully!**"
+                    
+                except Exception as e:
+                    step.output += f"\n\n**{agent_nm}** failed: {str(e)}"
+                    raise
+                    
+            else:
+                if agent_nm == "universeg":
+                    step.output += "Loading UniverSeg model...\n"
+                    step.output += "Running few-shot segmentation...\n"
+                            
+                try:
+                    res = await agent.run(child, state)
+                    step.output += f"**{agent_nm}** completed successfully!"
+                        
+                except Exception as e:
+                    step.output += f"\n\n**{agent_nm}** failed: {str(e)}"
+                    raise
 
             result_payload = res.output
 
@@ -188,7 +218,7 @@ async def run_pipeline(router, agents, task: Task, state: ConversationState):
             if hasattr(result_payload, "to_csv"):
                 state.memory["last_df"] = result_payload
 
-            msg.content = f"**{agent_nm}** done."
-            await msg.update()
+            #msg.content = f"**{agent_nm}** done."
+            #await msg.update()
 
     return result_payload
