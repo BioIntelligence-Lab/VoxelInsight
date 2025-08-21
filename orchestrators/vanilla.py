@@ -14,7 +14,7 @@ def _collect_latest_segmentations(state: ConversationState) -> List[str]:
     Return a clean list of existing segmentation file paths from memory.
     Supports:
       - state.memory["segmentations"]      
-      - state.memory["segmentation"]      
+      - state.memory["segmentation"] 
       - state.memory["segmentations_map"]  
     """
     mem = state.memory or {}

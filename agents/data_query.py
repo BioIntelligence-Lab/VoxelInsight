@@ -28,7 +28,6 @@ class DataQueryAgent:
         )
         code = extract_code_block(comp.choices[0].message.content)
         local_env = {"df_IDC": self.df_IDC, "df_BIH": self.df_BIH, "pd": pd, "plt": plt, "io": io, "os": os,}
-        print(code)
         out = run_user_code(code, local_env)
         res = out.get("res_query")
 

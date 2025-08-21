@@ -70,7 +70,7 @@ class Dicom2NiftiPyAgent:
         except Exception as e:
             pass
 
-        produced = [str(p) for p in out_dir.rglob("*.nii*")]  # <— RECURSIVE
+        produced = [str(p) for p in out_dir.rglob("*.nii*")] 
         if not produced:
             series_dirs = self._candidate_series_dirs(root)
             errs = []
@@ -94,7 +94,6 @@ class Dicom2NiftiPyAgent:
                 }
                 return TaskResult(output=f"dicom2nifti_py: conversion produced no NIfTI files.\n{diag}")
 
-        # Seed memory for downstream agents 
         state.memory.setdefault("files", []).extend(produced)
         state.memory["image_path"] = produced[0]
 

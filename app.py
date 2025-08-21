@@ -1,4 +1,5 @@
 import os
+from agents.midrc_query import MIDRCQueryAgent
 from agents.universeg import UniversegAgent
 import chainlit as cl
 from dotenv import load_dotenv
@@ -25,6 +26,7 @@ from agents.viz_slider import VizSliderAgent
 from agents.code_exec import CodeExecAgent
 from agents.dicom_to_nifti import Dicom2NiftiPyAgent
 from agents.universeg import UniversegAgent
+from agents.midrc_query import MIDRCQueryAgent
 
 @cl.oauth_callback
 def oauth_callback(
@@ -45,7 +47,7 @@ df_IDC = IDC_Client.index
 #df_BIH = pd.read_csv("Data/midrc_distributed_subjects.csv")
 #df_MIDRC = pd.read_csv("Data/MIDRC_Cases_table.csv")
 df_BIH = pd.DataFrame()
-df_MIDRC = pd.DataFrame()
+df_MIDRC = pd.read_parquet('midrc_mirror/midrc_files_wide.parquet')
 
 BASE_PROMPT   = Path("prompts/router_system.txt").read_text()
 ct_mappings     = Path("Data/TotalSegmentatorMappingsCT.txt").read_text()          
@@ -53,7 +55,7 @@ mri_mappings    = Path("Data/TotalSegmentatorMappingsMRI.txt").read_text()
 
 #router
 router = RouterAgent(
-    available_agents=["data_query", "imaging", "monai", "radiomics", "viz", "code_exec", "viz_slider", "dicom2nifti", "universeg"],
+    available_agents=["data_query", "imaging", "monai", "radiomics", "viz", "code_exec", "viz_slider", "dicom2nifti", "universeg", "midrc_query"],
     system_prompt=(
         BASE_PROMPT
         + "\n\n---\n### ROI to task mapping table for TotalSegmentator CT (tsv)\n" 
@@ -67,6 +69,8 @@ agents = {
     "data_query": DataQueryAgent(df_IDC=df_IDC,
                                  df_BIH=df_BIH,
                                  system_prompt=Path("prompts/agent_systems/data_query.txt").read_text()),
+    "midrc_query": MIDRCQueryAgent(df_MIDRC=df_MIDRC,
+                                  system_prompt=Path("prompts/agent_systems/midrc_query.txt").read_text()),
     "imaging": ImagingAgent(ct_mappings=ct_mappings),
     "radiomics": RadiomicsAgent(system_prompt=Path("prompts/agent_systems/radiomics.txt").read_text()),
     "code_exec": CodeExecAgent(system_prompt=Path("prompts/agent_systems/code_exec.txt").read_text()),
@@ -156,7 +160,7 @@ async def on_message(message: cl.Message):
                 await _zip_paths(files_to_package, zip_path)
             await cl.Message(
                 content=(
-                    "📥 **Inference complete**\n"
+                    "**Inference complete**\n"
                     f"- Items: {len(files_to_package)}\n\n"
                     "Click to download the output:"
                 ),

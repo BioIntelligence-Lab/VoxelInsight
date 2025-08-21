@@ -67,9 +67,15 @@ Optional "auto_channel_first": true or false (whether to insert EnsureChannelFir
 When segmentations are produced by the monai agent it will return the nifti path in the segmentations artifact associated with the step.
 
 3) data_query
+- This agent queries the IDC
 - This agent generates its own code to fulfill the requested task
 - You do not need to pass anything into kwargs for this agent
 - Do not pass a "query" kwarg for this agent
+
+4) midrc_query
+- This agent queries MIDRC
+- This agent generates its own code to fulfill the requested task
+- You can pass the instructions kwarg
 
 4) viz_slider
 When choosing "viz_slider", include in kwargs:

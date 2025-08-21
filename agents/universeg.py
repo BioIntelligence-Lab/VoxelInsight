@@ -40,7 +40,7 @@ def _expand_paths(maybe_paths) -> List[str]:
     return out
 
 def _stem_key(p: Path) -> str:
-    """Normalize stem for pairing by dropping extension and common mask suffixes."""
+    """Normalize stem for pairing by dropping extension and mask suffixes."""
     name = p.name
     base = name[:-7] if name.lower().endswith(".nii.gz") else name[: name.rfind(".")] if "." in name else name
     for suf in ["_mask", "-mask", "_seg", "-seg", "_label", "-label"]:
@@ -157,7 +157,7 @@ class UniversegAgent:
                 artifacts={"support_images": support_images, "support_masks": support_masks},
             )
 
-        max_support_slices = int(kw.get("max_support_slices", 10))
+        max_support_slices = int(kw.get("max_support_slices", 3))
         threshold = float(kw.get("threshold", 0.5))
         resize_to = tuple(kw.get("resize_to", DEFAULT_SIZE))
 
