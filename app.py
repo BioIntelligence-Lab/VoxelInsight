@@ -44,10 +44,9 @@ from idc_index import index
 
 IDC_Client = index.IDCClient()
 df_IDC = IDC_Client.index
-#df_BIH = pd.read_csv("Data/midrc_distributed_subjects.csv")
-#df_MIDRC = pd.read_csv("Data/MIDRC_Cases_table.csv")
 df_BIH = pd.DataFrame()
-df_MIDRC = pd.read_parquet('midrc_mirror/midrc_files_wide.parquet')
+df_MIDRC = pd.DataFrame()
+#df_MIDRC = pd.read_parquet('midrc_mirror/midrc_files_wide.parquet')
 
 BASE_PROMPT   = Path("prompts/router_system.txt").read_text()
 ct_mappings     = Path("Data/TotalSegmentatorMappingsCT.txt").read_text()          
