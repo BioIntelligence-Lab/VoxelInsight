@@ -29,25 +29,9 @@ I have created two dataframes \
     The second dataframe df_BIH contains the multi-source indexed dataframe\
     This index contains study level data from multiple source or public platforms including IDC, MIDRC, TCIA, among others\
     You have to identify whether the user wants to query this BDF dataframe or the IDC dataframe and answer their query\
-    The df_BIH dataframe has the following fields\
-    subject_id: patient id \
-    commons_name: name of the data source like IDC, MIDRC, AIMI\
-    metadata_source_version: version of the metadata \
-    race: race of the patient\
-    disease_type: disease type of the patient \
-    data_url_doi: url to access the data, sometimes this points to a journal\
-    StudyDescription: Description of what the study contains\
-    StudyInstanceUID: instance UID to look at this particular study\
-    study_viewer_url: link to OHIF viewer that hosts the dataset\
-    collection_id: id of different collections or datasets\
-    license: licens whether data is public or not etc.\
-    primary_site: primary body site for which data is collected \
-    metadata_source_date: date metadata was sourced\
-    commons_long_name: long name of the data source\
-    PatientAge: Age of the patient - numeric value\
-    EthnicGroup: Ethnic group\
-    PatientSex: Sex of the patient\
-    collection_id: id of the collection\
+    The MIDRC-BIH serves as a centralized data discovery and query infrastructure that links diverse and independent data repositories like The Cancer Imaging Archive (TCIA), the Radiology Society of North America (RSNA) Medical Imaging and Data Resource Center (MIDRC), and the National Cancer Institute's Genomic Data Commons (GDC)
+    You have been provided with some example fields and a full list of fields in the df_BIH dataframe below
+    The data_contributor_0 column will tell you where the data is from
 
 2)
 
@@ -64,9 +48,9 @@ The user may ask to download files from the IDC. In this case download the files
      import os
      from pathlib import Path
 
-     base_dir = os.path.join(os.path.expanduser("~"), "idc_downloads")
+     base_dir = os.path.join("idc_downloads")
      os.makedirs(base_dir, exist_ok=True)
-     download_dir = base_dir  # keep all series under ~/idc_downloads
+     download_dir = base_dir  # keep all series under idc_downloads
 
      IDC_Client = index.IDCClient()
      IDC_Client.download_from_selection(seriesInstanceUID=selected_series, downloadDir=download_dir)

@@ -1,14 +1,17 @@
-# Welcome to Chainlit! 🚀🤖
+# Welcome to VoxelInsight! 🧠🩻✨
 
-Hi there, Developer! 👋 We're excited to have you on board. Chainlit is a powerful tool designed to help you prototype, debug and share applications built on top of LLMs.
+Hi there! 👋 Welcome to **VoxelInsight**, your AI-powered radiology and medical imaging companion.  
+This platform helps radiologists, researchers, and students explore scans with advanced AI tools for **segmentation, radiomics, visualization, and data querying**—all in one interactive workspace.
 
-## Useful Links 🔗
+## What You Can Do 🚀
+- 🩻 **Upload & View Scans:** Seamlessly explore CT, MRI, and X-ray images.  
+- 🤖 **AI Segmentation:** Use MONAI and TotalSegmentator bundles for automatic organ and lesion detection.  
+- 📊 **Radiomics Analysis:** Extract quantitative imaging features for research and clinical insights.  
+- 🎛 **Interactive Visualization:** Navigate slices with sliders, overlays, and 3D previews.  
+- 📂 **Data Querying:** Search and stage datasets from **IDC, MIDRC, and TCIA** directly into your workspace.  
 
-- **Documentation:** Get started with our comprehensive [Chainlit Documentation](https://docs.chainlit.io) 📚
-- **Discord Community:** Join our friendly [Chainlit Discord](https://discord.gg/k73SQ3FyUh) to ask questions, share your projects, and connect with other developers! 💬
+## Welcome Screen
+You are now in the **VoxelInsight Chainlit app**.  
+Upload your files, query public datasets, ask the AI for help, and explore how medical imaging and AI come together.  
 
-We can't wait to see what you create with Chainlit! Happy coding! 💻😊
-
-## Welcome screen
-
-To modify the welcome screen, edit the `chainlit.md` file at the root of your project. If you do not want a welcome screen, just leave this file empty.
+We can’t wait to see how you use VoxelInsight to power your research, practice, and learning! 🚀
