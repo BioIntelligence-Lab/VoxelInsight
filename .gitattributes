@@ -1,1 +1,2 @@
-*.parquet filter=lfs diff=lfs merge=lfs -text
+midrc_mirror/nodes/midrc_files_wide.parquet filter=lfs diff=lfs merge=lfs -text
+Data/BIH_Cases_table.csv filter=lfs diff=lfs merge=lfs -text

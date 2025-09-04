@@ -31,7 +31,6 @@ I have created two dataframes \
     You have to identify whether the user wants to query this BDF dataframe or the IDC dataframe and answer their query\
     The MIDRC-BIH serves as a centralized data discovery and query infrastructure that links diverse and independent data repositories like The Cancer Imaging Archive (TCIA), the Radiology Society of North America (RSNA) Medical Imaging and Data Resource Center (MIDRC), and the National Cancer Institute's Genomic Data Commons (GDC)
     You have been provided with some example fields and a full list of fields in the df_BIH dataframe below
-    The data_contributor_0 column will tell you where the data is from
 
 2)
 

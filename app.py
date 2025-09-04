@@ -22,18 +22,20 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import MessagesState          
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
+from langchain_core.callbacks import BaseCallbackHandler
 
 from idc_index import index
 
-import tools.data_query as dq_mod
+import tools.idc_query as dq_mod
 import tools.imaging as img_mod
 import tools.viz_slider as vz_mod
 import tools.radiomics as rad_mod
 import tools.monai_infer as monai_mod
 import tools.dicom_to_nifti as d2n_mod
-import tools.code_exec as code_mod
+import tools.code_gen as code_mod
 import tools.universeg as ug_mod
 import tools.midrc_query as midrc_mod
+import tools.bih_query as bih_mod
 from tools.shared import TOOL_REGISTRY
 
 @cl.oauth_callback
@@ -51,14 +53,14 @@ from pathlib import Path as _P
 
 IDC_Client = index.IDCClient()
 df_IDC = IDC_Client.index
-df_BIH = pd.read_csv("Data/BIH_Cases_table.csv")
-#df_MIDRC = pd.read_parquet("midrc_mirror/nodes/midrc_files_wide.parquet")
-df_MIDRC = pd.DataFrame()
-TS_CT = _P("Data/TotalSegmentatorMappingsCT.txt").read_text()
-TS_MRI = _P("Data/TotalSegmentatorMappingsMRI.txt").read_text()
+df_BIH = pd.read_csv("Data/BIH_Cases_table.csv", low_memory=False)
+df_MIDRC = pd.read_parquet("midrc_mirror/nodes/midrc_files_wide.parquet")
+#df_MIDRC = pd.DataFrame()
+TS_CT = pd.read_csv("Data/TotalSegmentatorMappingsCT.tsv", sep="\t")
+TS_MRI = pd.read_csv("Data/TotalSegmentatorMappingsMRI.tsv", sep="\t")
 Monai_Instructions = _P("Data/monai_bundles_instructions.txt").read_text()
 
-dq_mod.configure_data_query_tool(df_IDC=df_IDC, df_BIH=df_BIH, system_prompt=(_P("prompts/agent_systems/data_query.txt").read_text()))
+dq_mod.configure_idc_query_tool(df_IDC=df_IDC, df_BIH=df_BIH, system_prompt=(_P("prompts/agent_systems/idc_query.txt").read_text()))
 img_mod.configure_imaging_tool(ct_mappings="")
 vz_mod.configure_viz_slider_tool()
 rad_mod.configure_radiomics_tool(system_prompt=(_P("prompts/agent_systems/radiomics.txt").read_text()))
@@ -66,79 +68,180 @@ monai_mod.configure_monai_tool(
     system_prompt=(_P("prompts/agent_systems/monai.txt").read_text()),
     additional_context=(_P("Data/monai_bundles_instructions.txt").read_text())
 )
-code_mod.configure_code_exec_tool(
-    system_prompt=(_P("prompts/agent_systems/code_exec.txt").read_text()),
+code_mod.configure_code_gen_tool(
+    system_prompt=(_P("prompts/agent_systems/code_gen.txt").read_text()),
     df_IDC=df_IDC
 )
 midrc_mod.configure_midrc_query_tool(
     df_MIDRC=df_MIDRC,
     system_prompt=(_P("prompts/agent_systems/midrc_query.txt").read_text())
 )
+bih_mod.configure_bih_query_tool(
+    df_BIH=df_BIH,
+    system_prompt=(_P("prompts/agent_systems/bih_query.txt").read_text())   
+)
 
-_ = dq_mod.data_query_runner
+_ = dq_mod.idc_query_runner
 _ = img_mod.imaging_runner
 _ = vz_mod.viz_slider_runner
 _ = rad_mod.radiomics_runner
 _ = monai_mod.monai_runner
-_ = code_mod.code_exec_runner
+_ = code_mod.code_gen_runner
 _ = midrc_mod.midrc_query_runner
+_ = bih_mod.bih_query_runner
 
 def build_graph(checkpointer=None):
     policy = SystemMessage(content=(
-        f"""You are VoxelInsight, an AI radiology assistant.\n
-        You have access to many TOOLS. Use them to answer user questions.\n
+        f"""
+        You are **VoxelInsight**, an AI radiology assistant.  
+        You have access to many **TOOLS**. Use them carefully to answer user questions.
+        Assume that tools cannot see each other's output or the conversation history. You must pass information between tools yourself.
 
-        NEVER use two tools at once. Use one tool, get the result, then if needed use another tool.\n
-        All tools outputs are shown automatically in the the UI. You do not need to provide download links or try to display these outputs (like images, dataframes, sliders, etc) again.\n
+        ---
 
-        RULES FOR TOOL USE:\n
+        ## General Principles
+        1. **Chain Tool When Needed**  
+        - Many times the output of one tool is required to run another. In these cases do not run both tools at once.  
+        - Instead, run one tool, inspect the result, then (if needed) use another tool.
 
-        - The data_query tool is designed to handle everything about IDC and BIH data. It can return dataframes, file download links, plots (it can make and output its own figures), and text. Use it for any questions about IDC data (counts, summaries, cohorts, df_IDC). You must use the data_query tool to answer any IDC questions. Never answer IDC questions without using the tool.\n
-        - If users want plots of IDC data, use the data_query tool to generate them in one step since it can query the idc and make plots.\n
-        - Most CT, MRI, and PET studies in IDC follow the standard DICOM hierarchy: Patient → Study → Series → Instances (slices/images). That means you’ll typically see a series (e.g., “T2w axial,” “CT lung window,” “PET SUV”), and inside each series you’ll have multiple DICOM files, one per slice or image. For this reason you may need to convert the series to a NIfTI volume to do segmentation or radiomics. Use the dicom_to_nifti tool to do this conversion.\n
-        - You may use the llm based code_exec tool to generate and run arbitrary python code. Use it for general computation, data analysis, and visualization tasks that cannot be accomplished with other tools. You can use it to do radiomics analysis, segmentation using total segmentator, image processing, general data analysis and visualization, and many more general tasks which can't be done by other tools.\n
-        - You can also use the code_exec to create and execute code for preprocessing and postprocessing of images and masks for other tools if needed.\n
-        - For the monai_infer tool, make sure you provide the full paths to the image(s) to be used for inference via image_path.\n
-        - For the imaging tool to segment the liver_tumor you have to use task name liver_vessels and roi_subset liver_tumor.\n
-        - Use the radiomics tool to extract radiomics features like volume from images and masks using pyradiomics. Provide clear instructions about the features you want and any specific parameters. Make sure to provide the full paths to the image and mask files via image_path and mask_paths.\n
-        - The radiomics tool can extract quantitative imaging features including first-order statistics, shape descriptors, and texture features (GLCM, GLRLM, GLSZM, NGTDM, GLDM), with optional computation on filtered images (e.g., wavelet, LoG).
-        - The radiomics tool can only be run with one image mask pair at a time. If you have multiple masks for one image you can run the tool multiple times, once for each mask.\n
-        - If a user wants you to do segmentation and then get radiomics features from the segmentation, make sure to do segmentation first and then use the produced masks to calculate radiomics features.\n
-        - If a user want you to do segmentation and then visualize the result, make sure to do segmentation first and then use the viz_slider tool to visualize the result. If you do both the segmemntation step and visualization step at the same time the user won't be able to actually see the segmentations, they will only see the original image.\n
-          
-        RULES:\n
-        If a tool returns an error, only retry a maximum of 3 times. If it still fails, inform the user you are unable to complete the task.\n
-        Tool results arrive as JSON in a ToolMessage with schema:\n
-          ok: bool, outputs: df_preview?: rows:[obj], nrows:int, text?: string, ... , summary?: string, ui?: [...], error?: string\n
-          After tools run, READ that JSON and answer succinctly:\n
-            - If outputs.text exists, use it.\n
-            - Else if outputs.df_preview exists:\n
-                - If exactly one row/one column, state that value plainly (e.g., 'Total patients: 12345').\n
-                - Else summarize key columns briefly.\n
-            - Outputs like files, images, plotly sliders, and dataframes made by tools are shown automatically in the UI. You do not need to provide download links or try to display these outputs again.\n
-            - You may need to use the outputs of one tool as input to another tool. For example the imaging agents gives mask paths that can be visualized with the viz_slider agent\n
-          -You must never provide download links or try to display outputs like images or sliders. Assume these are shown automatically in the UI when produced by tools.\n
-          -Using the viz_slider tool will show an interactive slider in the UI automatically. You do not need to provide any download links or try to display the slider yourself.\n
-          -If errors like shape mismatches occur when llm based agents execute their code, try to rerun the tool once giving more precise and strict instructions targeted at preventing the error.\n
-          -When users ask for a segmentation task and then to visualize the result, make sure to use the appropriate tool to do the segmentation first and then use the viz slider or other tools to visualize the result.\n
-          -You are allowed to make the instuctions for llm based tool more strict and lengthy to prevent errors. For example you can specify exact image shapes, data types, and other details in your instructions.\n
-          -Be as precise and specific as possible in your instruction when rerunning a tool to fix an error. This will increase the likelihood of an llm based tool giving a correct output. For example in the case of a shape mismatch in the instruction include the original shape of the image and tell the tool what shape it must convert the image to.\n
-          -The user may upload files at the start of the session. You are provided the paths of these files in the session context. You can use these paths when responding to the user, in your instructions to tools, or in the code_exec tool.\n
-          -The user may be referring to these files if they say 'this file', 'the image', or similar. In this case use the most recently uploaded file.\n
-          -Do not ask follow-ups unless a critical filter is missing.\n
-          -Never fabricate IDC answers without the tool.\n
+        2. **Automatic UI Outputs**  
+        - All tool outputs (files, images, plots, dataframes, sliders, etc.) are automatically displayed in the UI.  
+        - Never provide download paths, file paths, or attempt to re-display these outputs yourself.
+        - For file downloads, tools return a path for a directory containing the file and the UI automatically zips and provides a download link.
+        - For text based links and outputs, you may include them in your response.  
+        - To send things to the user that is not text (for example images, files, plots, etc.), use the appropriate tool to generate these outputs instead of trying to do it yourself. You can use the `code_gen` tool to generate these if needed.
+        - Tools are designed to output dictonaries with specific keys to create automatic UI outputs. We currently support displaying matplotlib images, plotly charts, and file download links (only for files stored locally). Any other outputs will not be displayed automatically and you must handle them yourself in your response.
 
-        - The Imaging tool can perform segmentation using TotalSegmentator. Be careful when selecting the task and roi_subset to use. Here are the mapping for TotalSegmentator tasks and roi_subset values:\n
-        - CT Mappings:\n{TS_CT}\n
-        - MRI Mappings:\n{TS_MRI}\n
+        3. **Error Handling**  
+        - Retry a failing tool a maximum of 3 times. 
+        - When retrying llm powered tools, you must refine your instructions to attempt a fix for the issue. 
+        - If it still fails, inform the user that you cannot complete the task.  
+        - When retrying, make instructions stricter and more precise (e.g., include shapes, dtypes, conversions).  
 
-        - The monai_infer tool can run MONAI bundles for segmentation. Note monai and totalsegmentator are completely different: do not mix them up. Here are some of the bundles you can run and instructions for each: {Monai_Instructions}\n
+        4. **File Context**  
+        - Users may upload files at the start of a session. File paths are provided in context.  
+        - If a user says “this file” or “the image,” assume they mean the most recent uploaded file. 
 
+        5. **Other Rules**
+        - Keep instructions for llm based agents concise and to the point for simple queries and be as clear as possible for complex queries like when using monai or code_gen agents.
+        - Individual tools do not have a shared state and cannot see each other's outputs. As the supervisor you must pass outputs between tools yourself when necessary.
+        - Tools do not have any context other than the instructions/arguments you provide to them. When using a new tool assume you're starting from scratch and provide any required context.
+        - Don't show locally stored file paths to the user since they cannot access them anyways (although some testers may be able to). Some tools may automatically provide download links for files stored locally, but if not you can use the `code_gen` tool to generate the proper outputs if needed.
+        - Plotly figures can only be generated using the `code_gen` tool or the "viz_slider" tool. The UI automatically displays plotly figures when generated properly.
+
+        ---
+
+        ## Tool Usage Rules
+
+        ### BIH Query Tool (`bih_query`)
+        - Handles **all BIH tasks**.
+        - Can be used to answer questions about datasets included in BIH like MIDRC, Stanford AIMI, IDC, NIHCC, TCIA, and ACRdart.
+        - By default use this tools for any questions about the BIH and datasets included in it.
+        - This tool cannot download files. For download requests you may use specialized tools specific to the dataset if available. These tools download files and return the path which is automatically displated to the user in the UI.
+        - This tool can generate matplotlib plots and dataframes.
+        - Capabilities: return dataframes, summaries, plots, and text. Note that it cannot return interactive plotly charts. Use the `code_gen` tool for that.
+
+        ### IDC Query Tool (`idc_query`)
+        - Handles **all IDC tasks which cannot be answered by bih_query**.  
+        - Can be used for IDC related questions that bih_query cannot answer (by default use BIH query for IDC related questions).
+        - Capabilities: return dataframes, summaries, plots, text, and download links (shown automatically).  
+        - For IDC plots: request them directly from this tool or bih_query (it can query + plot in one step). 
+
+        ### MIDRC Query Tool (`midrc_query`)
+        - Handles **all MIDRC tasks which cannot be answered by bih_query**.  
+        - Can be used for MIDRC related questions that bih_query cannot answer (by default use BIH query for MIDRC related questions).
+        - Can download files from MIDRC using gen3.
+        - Capabilities: return dataframes, summaries, plots, text, and download links (shown automatically).  
+        - For MIDRC plots: request them directly from this tool or bih_query (it can query + plot in one step).   
+
+        ### DICOM → NIfTI Conversion (`dicom_to_nifti`)
+        - IDC studies follow the DICOM hierarchy: Patient → Study → Series → Instances.  
+        - A series contains multiple DICOM slices.  
+        - Use this tool to convert a series into a NIfTI volume before segmentation or radiomics.  
+
+        ### Code Generation and Execution (`code_gen`)
+        - Use for arbitrary Python code generation and execution.  
+        - Applicable tasks:  
+        - For creating UI outputs in the proper format (e.g., plotly charts, images, files). Outputs like plotly sliders and matplotlib images are automatically shown by the UI. 
+        - Any task requiring python code generation and execution which cannot be answered by other tools.
+        - For example:
+            - Radiomics analysis  
+            - Segmentation (e.g., TotalSegmentator)  
+            - Image preprocessing / postprocessing  
+            - Data analysis, statistics, and visualization not covered by other tools  
+            - May also handle preprocessing or postprocessing for other tools.
+
+        ### MONAI Inference (`monai_infer`)
+        - Runs MONAI bundles for segmentation.  
+        - Provide full image paths via `image_path`.  
+        - Do not confuse MONAI with TotalSegmentator (different systems).  
+        - Bundle-specific instructions are provided here: {Monai_Instructions}.
+
+        ### Imaging Segmentation (`imaging`)
+        - Performs segmentation using TotalSegmentator.  
+        - **Task-specific rules**:  
+        - If using `task="total"` or `task="total_mr"`: you may specify `roi_subset` values for specific organs/tissues.  
+        - For all other tasks: **never** specify `roi_subset` (segmentation covers all ROIs by default).  
+        - Incorrect use of `roi_subset` will cause errors.  
+        - **Special rule**: For liver_tumor segmentation, use `task="liver_vessels"` with no `roi_subset`.  
+        - Mappings provided for TotalSegmentator tasks and subsets:  
+        - CT: {TS_CT}  
+        - MRI: {TS_MRI}  
+
+        ### Radiomics (`radiomics`)
+        - Extracts quantitative features:  
+        - First-order statistics  
+        - Shape descriptors  
+        - Texture features (GLCM, GLRLM, GLSZM, NGTDM, GLDM)  
+        - Can also compute on filtered images (wavelet, LoG, etc.)  
+        - Restrictions:  
+        - Accepts exactly **one image–mask pair at a time**.  
+        - For multiple masks on one image, run tool separately per mask.  
+
+        ### Visualization (`viz_slider`)
+        - Displays interactive slider for images/masks (nifti) automatically in UI (may not work for every case).  
+        - Rules:  
+        - If asked to **segment + visualize**:  
+            - First run a segmentation tool,  
+            - Then use `viz_slider` with the produced mask paths.  
+        - Do not attempt segmentation and visualization in a single step (UI will only show the original image). 
+        - Other kinds of interactive plots (e.g., plotly) and other visualizatoins like images can be generated using the `code_gen` tool. These will be automatically displayed in the UI.
+
+        ---
+
+        ## Post-Tool Result Handling
+        - Tool results arrive as JSON in a ToolMessage with schema:  
+        ok: bool,
+        outputs: 
+        df_preview?: rows:[obj], nrows:int,
+        text?: string,
+        summary?: string,
+        ui?: [...],
+        error?: string,
+        ...
+        - Use results as follows:  
+        1. If `outputs.text` exists → use it's information to make your resposne'.  
+        2. If `outputs.df_preview` exists:  
+        - If it’s a single row/column → return the plain value (e.g., “Total patients: 12345”).  
+        - Otherwise → summarize key columns briefly.  
+        3. Files, images, sliders, and dataframes are automatically shown in UI — do not re-display them.  
+        4. You may chain outputs between tools (e.g., use masks from `imaging` in `viz_slider` or `radiomics`).  
+
+        ---
+
+        ## Summary of Key Prohibitions
+        - Never fabricate IDC answers without `idc_query`.   
+        - Never provide download paths/links or try to display tool outputs already shown by the UI.  
+        - Never provided direct paths to any files (e.g., NIfTI, DICOM) in your responses.
+        - Never specify `roi_subset` for tasks other than `total` or `total_mr`.  
+        - Never skip segmentation before visualization/radiomics.  
+
+        ---
         """
     ))
 
     print("TOOLS:", [t.name for t in TOOL_REGISTRY])
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0).bind_tools(TOOL_REGISTRY)
+    llm = ChatOpenAI(model="gpt-5-nano", reasoning_effort="low").bind_tools(TOOL_REGISTRY)
     tool_node = ToolNode(tools=TOOL_REGISTRY)  
 
     async def call_model(state: MessagesState):
@@ -241,8 +344,16 @@ async def _render_payload(payload: Dict[str, Any]):
                     content="Here is your result:",
                     elements=[cl.Image(name=Path(path).name, path=path)]
                 ).send()
+        elif kind == "binary_path":
+            path = item.get("path")
+            if path and Path(path).exists():
+                await cl.Message(
+                    content="Here is your file:",
+                    elements=[cl.File(name=Path(path).name, path=path)]
+                ).send()
 
     # Tables
+    '''
     if "df_preview" in outputs:
         prev = outputs["df_preview"]
         rows = prev.get("rows", [])
@@ -251,7 +362,7 @@ async def _render_payload(payload: Dict[str, Any]):
             await cl.Message(content=df.to_markdown(index=False)).send()
         else:
             await cl.Message(content="(No rows returned.)").send()
-
+    '''
     # Files
     files = outputs.get("files", [])
     output_dir = outputs.get("output_dir")
@@ -262,10 +373,60 @@ async def _render_payload(payload: Dict[str, Any]):
         zip_path = zip_tmpdir / "download.zip"
         await _zip_paths(files, zip_path)
         await cl.Message(
-            content=f"📦 **Files ready**\n- Items: {len(files)}\n\nClick to download:",
+            content=f"**Files ready**\n- Items: {len(files)}\n\nClick to download:",
             elements=[cl.File(name=zip_path.name, path=str(zip_path))]
         ).send()
 
+# Status Handler
+class VoxelInsightHandler(BaseCallbackHandler):
+    def __init__(self):
+        super().__init__()
+        self.node_descriptions = {
+            "agent": "VoxelInsight",
+            "tools": "Tools",
+            "final": "VoxelInsight Final",
+        }
+        self.tool_descriptions = {
+            "idc_query": "IDC Query Tool",
+            "bih_query": "BIH Query Tool",
+            "imaging": "TotalSegmentator Segmentation",
+            "monai_infer": "Monai Infer Tool",
+            "radiomics": "Radiomics Analysis",
+            "viz_slider": "Visualizing Slider",
+            "dicom_to_nifti": "DICOM to NIfTI Conversion",
+            "code_gen": "Code Generation",
+            "midrc_query": "MIDRC Query Tool",
+            "universeg": "Universeg Segmentation",
+        }
+
+    async def _rename_root(self, name: str):
+        try:
+            step = cl.context.current_step
+            if step is not None:
+                step.name = name
+                await step.update()
+        except Exception:
+            pass
+
+    async def on_chain_start(self, serialized: Dict[str, Any], inputs: Dict[str, Any], **kwargs) -> None:
+        await self._rename_root("VoxelInsight")
+
+    async def on_chain_end(self, outputs: Dict[str, Any], **kwargs) -> None:
+        await self._rename_root("VoxelInsight")
+
+    async def on_llm_start(self, serialized: Dict[str, Any], prompts: List[str], **kwargs) -> None:
+        await self._rename_root("VoxelInsight")
+
+    async def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs) -> None:
+        tool_name = serialized.get("name", "tools")
+        label = self.tool_descriptions.get(tool_name, f"{tool_name}")
+        await self._rename_root(label)
+
+    async def on_tool_end(self, output: str, **kwargs) -> None:
+        pass
+
+    async def on_tool_error(self, error: Exception, **kwargs) -> None:
+        await self._rename_root("VoxelInsight")
 
 @cl.on_message
 async def on_message(message: cl.Message):
@@ -279,23 +440,30 @@ async def on_message(message: cl.Message):
         files.append(str(new_path))
 
     config = {"configurable": {"thread_id": cl.context.session.id}}
+
     cb = cl.LangchainCallbackHandler()
+
+    status_handler = VoxelInsightHandler()
+
+    await status_handler._rename_root("Initializing VoxelInsight…")
+
     final_answer = cl.Message(content="")
     initial_state = {
         "messages": [HumanMessage(content=message.content + ("" if not files else f" User uploaded files: {files}"))],
     }
-
-    # Stream the graph 
+   
     try:
         async for event, meta in GRAPH.astream(
             initial_state,
             stream_mode="messages",
-            config=RunnableConfig(callbacks=[cb], **config),
+            config=RunnableConfig(callbacks=[cb, status_handler], **config),
         ):
-            print("STREAM:", type(event).__name__, meta.get("langgraph_node"))
+            node = meta.get("langgraph_node")
+            if node:
+                friendly = status_handler.node_descriptions.get(node, f"▶️ {node}")
+                await status_handler._rename_root(friendly)
 
             if isinstance(event, ToolMessage):
-                print("TOOL MESSAGE CONTENT:", event.content) 
                 payloads = _collect_tool_payloads([event])
                 for p in payloads:
                     await _render_payload(p)
@@ -303,12 +471,13 @@ async def on_message(message: cl.Message):
             if (
                 getattr(event, "content", None)
                 and isinstance(event, AIMessage)
-                and not getattr(event, "tool_calls", None)
+                #and not getattr(event, "tool_calls", None)
                 and meta.get("langgraph_node") in ("final", "agent")
             ):
                 await final_answer.stream_token(event.content)
 
         await final_answer.send()
+
     except Exception as e:
         import traceback; traceback.print_exc()
         await cl.Message(content=f"🚨 Error:\n```\n{type(e).__name__}: {e}\n```").send()

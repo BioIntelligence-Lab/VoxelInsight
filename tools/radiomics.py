@@ -15,7 +15,7 @@ from tools.shared import toolify_agent
 
 class RadiomicsAgent:
     name = "radiomics"
-    model = "gpt-4o" 
+    model = "gpt-5-nano" 
 
     def __init__(self, system_prompt: str):
         self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -56,7 +56,7 @@ class RadiomicsAgent:
 
         comp = await self.client.chat.completions.create(
             model=self.model,
-            temperature=0,
+            temperature=1,
             messages=messages,
         )
         code = extract_code_block(comp.choices[0].message.content)

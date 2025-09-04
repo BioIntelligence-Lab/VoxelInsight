@@ -46,7 +46,7 @@ edit_message = false
     #    accept = { "application/octet-stream" = [".xyz", ".pdb"] }
     # Note: Using "*/*" is not recommended as it may cause browser warnings
     accept = ["*/*"]
-    max_files = 20
+    max_files = 150
     max_size_mb = 500
 
 [features.audio]

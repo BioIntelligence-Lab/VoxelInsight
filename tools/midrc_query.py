@@ -12,7 +12,7 @@ from tools.shared import toolify_agent, _cs
 
 class MIDRCQueryAgent:
     name = "midrc_query"
-    model = "gpt-4o"
+    model = "gpt-5"
 
     def __init__(self, df_MIDRC: pd.DataFrame, system_prompt: str):
         key = os.getenv("OPENAI_API_KEY")
@@ -31,11 +31,12 @@ class MIDRCQueryAgent:
         ]
         comp = await self.client.chat.completions.create(
             model=self.model,
-            temperature=0,
+            temperature=1,
             messages=messages,
         )
         code = extract_code_block(comp.choices[0].message.content)
-        local_env = {"df_MIDRC": self.df_MIDRC, "pd": pd, "plt": plt, "io": io, "os": os, "duckdb": duckdb}
+        print(code)
+        local_env = {"df_MIDRC": self.df_MIDRC, "cred": "/Users/adhrith/Downloads/credentials.json", "pd": pd, "plt": plt, "io": io, "os": os, "duckdb": duckdb}
         out = run_user_code(code, local_env)
         res = out.get("res_query")
 
@@ -58,7 +59,7 @@ class MIDRCQueryArgs(BaseModel):
 
 @toolify_agent(
     name="midrc_query",
-    description="Query the MIDRC dataframe using python. Returns previews or aggregates.",
+    description="Query the MIDRC dataframe using python. Returns previews or aggregates. Can also download files from MIDRC using gen3.",
     args_schema=MIDRCQueryArgs,
     timeout_s=120,
 )

@@ -85,7 +85,7 @@ def run_monai_bundle(
 
 class MONAIAgent:
     name = "monai"
-    model = "gpt-4o"  
+    model = "gpt-5"  
 
     def __init__(self, system_prompt: str, additional_context: str):
         self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -149,8 +149,8 @@ class MONAIAgent:
 
         comp = await self.client.chat.completions.create(
             model=self.model,
-            temperature=0,
             messages=messages,
+            reasoning_effort = "low",
         )
         code = extract_code_block(comp.choices[0].message.content)
 

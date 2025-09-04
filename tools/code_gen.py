@@ -1,4 +1,4 @@
-# tools/code_exec.py
+# tools/code_gen.py
 import os, io, json
 from typing import List, Optional, Dict, Any
 
@@ -16,8 +16,8 @@ from core.state import TaskResult
 from tools.shared import toolify_agent  
 
 class CodeExecTool:
-    name = "code_exec"
-    model = "gpt-4o"
+    name = "code_gen"
+    model = "gpt-5"
 
     def __init__(self, system_prompt: str, df_IDC: Optional[pd.DataFrame] = None):
         self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -56,7 +56,7 @@ class CodeExecTool:
 
         comp = await self.client.chat.completions.create(
             model=self.model,
-            temperature=0,
+            temperature=1,
             messages=messages,
         )
         code = extract_code_block(comp.choices[0].message.content)
@@ -96,7 +96,7 @@ class CodeExecTool:
 
 _CODE: Optional[CodeExecTool] = None
 
-def configure_code_exec_tool(*, system_prompt: str, df_IDC: Optional[pd.DataFrame] = None):
+def configure_code_gen_tool(*, system_prompt: str, df_IDC: Optional[pd.DataFrame] = None):
     global _CODE
     _CODE = CodeExecTool(system_prompt=system_prompt, df_IDC=df_IDC)
 
@@ -112,18 +112,18 @@ class CodeExecArgs(BaseModel):
     )
 
 @toolify_agent(
-    name="code_exec",
+    name="code_gen",
     description=(
         "Execute LLM-generated Python against local context (files, IDC data, imaging libs). "
         "Returns preview/text/files when applicable."
-        "The code_exec tool can be used for a wide variety of tasks including data analysis, visualization, and general computation."
-        "Use the code_exec tool when the user requests tasks that require custom code execution, data manipulation, or analysis beyond predefined tools."
-        "The code_exec tool can do radiomics analysis, segmentation using total segmentator, image processing, general data analysis and visualization, and many more general tasks which can't be done by other tools."
+        "The code_gen tool can be used for a wide variety of tasks including data analysis, visualization, and general computation."
+        "Use the code_gen tool when the user requests tasks that require custom code execution, data manipulation, or analysis beyond predefined tools."
+        "The code_gen tool can do radiomics analysis, segmentation using total segmentator, image processing, general data analysis and visualization, and many more general tasks which can't be done by other tools."
     ),
     args_schema=CodeExecArgs,
     timeout_s=600,
 )
-async def code_exec_runner(
+async def code_gen_runner(
     instructions: str,
     files: Optional[List[str]] = None,
     image_path: Optional[str] = None,
@@ -131,7 +131,7 @@ async def code_exec_runner(
     last_df_json: Optional[str] = None,
 ):
     if _CODE is None:
-        raise RuntimeError("CodeExec tool not configured. Call configure_code_exec_tool(system_prompt=..., df_IDC=...).")
+        raise RuntimeError("CodeExec tool not configured. Call configure_code_gen_tool(system_prompt=..., df_IDC=...).")
     return await _CODE.run(
         instructions=instructions,
         files=files,

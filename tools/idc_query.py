@@ -5,8 +5,8 @@ from core.utils import extract_code_block
 from core.sandbox import run_user_code
 
 class DataQueryAgent:
-    name = "data_query"
-    model = "gpt-4o"
+    name = "idc_query"
+    model = "gpt-5-mini"
 
     def __init__(self, df_IDC: pd.DataFrame, df_BIH: pd.DataFrame, system_prompt: str):
         key = os.getenv("OPENAI_API_KEY")
@@ -25,7 +25,7 @@ class DataQueryAgent:
         ]
         comp = await self.client.chat.completions.create(
             model=self.model,
-            temperature=0,
+            temperature=1,
             messages=messages,
         )
         code = extract_code_block(comp.choices[0].message.content)
@@ -50,7 +50,7 @@ from core.state import Task
 
 _DQ: Optional[DataQueryAgent] = None
 
-def configure_data_query_tool(*, df_IDC: pd.DataFrame, df_BIH: pd.DataFrame, system_prompt: str):
+def configure_idc_query_tool(*, df_IDC: pd.DataFrame, df_BIH: pd.DataFrame, system_prompt: str):
     global _DQ
     _DQ = DataQueryAgent(df_IDC=df_IDC, df_BIH=df_BIH, system_prompt=system_prompt)
 
@@ -58,16 +58,16 @@ class DataQueryArgs(BaseModel):
     instructions: str = Field(..., description="Natural language for the IDC tables.")
 
 @toolify_agent(
-    name="data_query",
+    name="idc_query",
     description=(
-        "The data_query tool can query IDC and BIH data using python. It can return dataframes, file download links, plots, and text. When dataframes, files, or plots are returned, they will be shown in the chat UI. "
-        "Use the data_query tool when the user asks about IDC or BIH data (counts, summaries, cohorts, df_IDC, downloads)."
-        "The MIDRC-BIH serves as a centralized data discovery and query infrastructure that links diverse and independent data repositories like The Cancer Imaging Archive (TCIA), the Radiology Society of North America (RSNA) Medical Imaging and Data Resource Center (MIDRC), and the National Cancer Institute's Genomic Data Commons (GDC)."
+        "For querying the Imaging Data Commons (IDC) use the bih_query tool instead of this one unless the user asks for file downloads or a question that bih_query cannot answer."
+        "The idc_query tool can query IDC using python. It can return dataframes, file download links, plots, and text. When dataframes, files, or plots are returned, they will be shown in the chat UI. "
+        "Use the idc_query tool when the user asks about IDC data and the bih_query tool cannot answer it (counts, summaries, cohorts, df_IDC, downloads)."
     ),
     args_schema=DataQueryArgs,
-    timeout_s=120,
+    timeout_s=600,
 )
-async def data_query_runner(instructions: str):
+async def idc_query_runner(instructions: str):
     if _DQ is None:
         raise RuntimeError(
             "DataQuery tool is not configured."

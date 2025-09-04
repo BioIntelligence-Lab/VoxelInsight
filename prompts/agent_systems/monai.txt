@@ -16,8 +16,6 @@ It will run inference with a given bundle (make sure bundle is downloaded before
 The functions code is provided below for inference. This function may not be applicable to all monai bundles, and you may create your own functions to handle different bundles
 
 Inputs to expect (provided in the user message context):
-- INPUT_FILES: list[str] – user-uploaded file paths (use the first as image if not specified).
-- KWARGS: dict – may include "bundle_dir", "image_path", "auto_channel_first", "channel_dim", etc.
 - Helper: _save_pred_as_nifti(pred, out_path) to write a MetaTensor/ndarray as NIfTI.
 - Helper: _normalize_to_HWD(x) to make masks (H,W,D) format
 
@@ -57,10 +55,6 @@ ENVIRONMENT you have access to:
 run_monai_bundle,
 _normalize_to_HWD(x),
 _save_pred_as_nifti,
-"INPUT_FILES": task.files,
-"STATE_IMAGE_PATH": state.memory.get("image_path"),
-"STATE_SEGMENTATIONS": state.memory.get("segmentations"),
-"KWARGS": task.kwargs,
 
 run_monai_bundle function code (this function is available in the local environment and can be used directly): 
 

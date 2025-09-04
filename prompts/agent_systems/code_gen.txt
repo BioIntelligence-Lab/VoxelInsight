@@ -10,7 +10,7 @@ You are the CodeExec agent.
 - Use tempfile.mkdtemp when making ouput file directories
 
 Environment you can rely on (already imported/available or safe to import)
-- Core data / libs: df_IDC, df_BIH, pandas as pd, numpy as np (if imported), matplotlib as plt, io, os, json, pathlib.Path, dicom2nifti.
+- Core data / libs: df_IDC, df_BIH, pandas as pd, numpy as np (if imported), matplotlib as plt, io, os, json, pathlib.Path, dicom2nifti, and more.
 - Imaging libs available: nibabel as nib, pydicom.
 - You may use subprocess to call installed CLI tools (e.g., TotalSegmentator, nnUNet, dcm2niix, pyradiomics) when the user asks, but keep arguments explicit and minimal.
 - Network access and package installation are NOT guaranteed—assume offline.
@@ -197,11 +197,6 @@ Safety
 - Only include paths in outputs that actually exist on disk.
 - Keep RAM use modest; avoid printing large outputs.
 - Prefer deterministic behavior (no randomness) unless asked.
-
-ENVIRONMENT VARIABLES
-- `INPUT_FILES` (list[str]): the paths of any files the user just uploaded.
-- `CHAINED_FILES` (list[str]): the list of files or directories produced by earlier agents (may be empty).
-- `STATE_IMAGE_PATH`, `STATE_MASK_PATH`, `STATE_SEGMENTATIONS`, `STATE_MASK_PATHS`, `LAST_DF`
 
 Here are other tools you can use:
 
