@@ -99,6 +99,7 @@ class Dicom2NiftiTool:
         return TaskResult(
             output={
                 "action": "download",
+                "tool": self.name,
                 "download_dir": str(out_base),
                 "files": produced
             },
@@ -117,7 +118,11 @@ class Dicom2NiftiArgs(BaseModel):
 
 @toolify_agent(
     name="dicom2nifti",
-    description="Convert a DICOM directory (or nested series) into NIfTI (.nii.gz). Returns a downloadable file list.",
+    description=(
+        "IDC studies follow the DICOM hierarchy: Patient → Study → Series → Instances."
+        "A series contains multiple DICOM slices."
+        "Use this tool to convert a DICOM directory (or nested series) into NIfTI (.nii.gz). Returns a downloadable file list automatically displayed in UI for users to download."
+    ),
     args_schema=Dicom2NiftiArgs,
     timeout_s=900, 
 )

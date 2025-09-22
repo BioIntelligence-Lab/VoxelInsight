@@ -60,9 +60,10 @@ class DataQueryArgs(BaseModel):
 @toolify_agent(
     name="idc_query",
     description=(
-        "For querying the Imaging Data Commons (IDC) use the bih_query tool instead of this one unless the user asks for file downloads or a question that bih_query cannot answer."
-        "The idc_query tool can query IDC using python. It can return dataframes, file download links, plots, and text. When dataframes, files, or plots are returned, they will be shown in the chat UI. "
-        "Use the idc_query tool when the user asks about IDC data and the bih_query tool cannot answer it (counts, summaries, cohorts, df_IDC, downloads)."
+        "Handles all IDC tasks."  
+        "Capabilities: return dataframes, summaries, plots, text, and download links (shown automatically)."
+        "For IDC plots: request them directly from this tool (it can query + plot in one step)."
+        "Matplotlib plots and file downloads (when files are downloaded directly from the IDC) will automatically be rendered in the chat UI. Other outputs will not automatically be shown in the chat UI." 
     ),
     args_schema=DataQueryArgs,
     timeout_s=600,
@@ -70,7 +71,7 @@ class DataQueryArgs(BaseModel):
 async def idc_query_runner(instructions: str):
     if _DQ is None:
         raise RuntimeError(
-            "DataQuery tool is not configured."
+            "IDCQuery tool is not configured."
         )
     task = Task(user_msg=instructions, files=[], kwargs={})
     return await _DQ.run(task, _cs())

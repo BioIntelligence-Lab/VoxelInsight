@@ -35,7 +35,9 @@ import tools.dicom_to_nifti as d2n_mod
 import tools.code_gen as code_mod
 import tools.universeg as ug_mod
 import tools.midrc_query as midrc_mod
+import tools.midrc_download as midrc_dl_mod
 import tools.bih_query as bih_mod
+import tools.tcia_download as tcia_dl_mod
 from tools.shared import TOOL_REGISTRY
 
 @cl.oauth_callback
@@ -80,6 +82,8 @@ bih_mod.configure_bih_query_tool(
     df_BIH=df_BIH,
     system_prompt=(_P("prompts/agent_systems/bih_query.txt").read_text())   
 )
+midrc_dl_mod.configure_midrc_download_tool()
+tcia_dl_mod.configure_tcia_download_tool()
 
 _ = dq_mod.idc_query_runner
 _ = img_mod.imaging_runner
@@ -89,14 +93,18 @@ _ = monai_mod.monai_runner
 _ = code_mod.code_gen_runner
 _ = midrc_mod.midrc_query_runner
 _ = bih_mod.bih_query_runner
+_ = midrc_dl_mod.midrc_download_runner
+_ = tcia_dl_mod.tcia_download_runner
 
 def build_graph(checkpointer=None):
     policy = SystemMessage(content=(
         f"""
-        You are **VoxelInsight**, an AI radiology assistant.  
+        You are **VoxelInsight**, an AI radiology assistant/agent.  
         You have access to many **TOOLS**. Use them carefully to answer user questions.
         Assume that tools cannot see each other's output or the conversation history. You must pass information between tools yourself.
-
+        Do not ask the user follow up questions unless absolutely necessary. 
+        Do not do more than what the user requests.
+        Do not suggest next steps for the user unless they ask for them.
         ---
 
         ## General Principles
@@ -132,81 +140,17 @@ def build_graph(checkpointer=None):
         ---
 
         ## Tool Usage Rules
-
-        ### BIH Query Tool (`bih_query`)
-        - Handles **all BIH tasks**.
-        - Can be used to answer questions about datasets included in BIH like MIDRC, Stanford AIMI, IDC, NIHCC, TCIA, and ACRdart.
-        - By default use this tools for any questions about the BIH and datasets included in it.
-        - This tool cannot download files. For download requests you may use specialized tools specific to the dataset if available. These tools download files and return the path which is automatically displated to the user in the UI.
-        - This tool can generate matplotlib plots and dataframes.
-        - Capabilities: return dataframes, summaries, plots, and text. Note that it cannot return interactive plotly charts. Use the `code_gen` tool for that.
-
-        ### IDC Query Tool (`idc_query`)
-        - Handles **all IDC tasks which cannot be answered by bih_query**.  
-        - Can be used for IDC related questions that bih_query cannot answer (by default use BIH query for IDC related questions).
-        - Capabilities: return dataframes, summaries, plots, text, and download links (shown automatically).  
-        - For IDC plots: request them directly from this tool or bih_query (it can query + plot in one step). 
-
-        ### MIDRC Query Tool (`midrc_query`)
-        - Handles **all MIDRC tasks which cannot be answered by bih_query**.  
-        - Can be used for MIDRC related questions that bih_query cannot answer (by default use BIH query for MIDRC related questions).
-        - Can download files from MIDRC using gen3.
-        - Capabilities: return dataframes, summaries, plots, text, and download links (shown automatically).  
-        - For MIDRC plots: request them directly from this tool or bih_query (it can query + plot in one step).   
-
-        ### DICOM → NIfTI Conversion (`dicom_to_nifti`)
-        - IDC studies follow the DICOM hierarchy: Patient → Study → Series → Instances.  
-        - A series contains multiple DICOM slices.  
-        - Use this tool to convert a series into a NIfTI volume before segmentation or radiomics.  
-
-        ### Code Generation and Execution (`code_gen`)
-        - Use for arbitrary Python code generation and execution.  
-        - Applicable tasks:  
-        - For creating UI outputs in the proper format (e.g., plotly charts, images, files). Outputs like plotly sliders and matplotlib images are automatically shown by the UI. 
-        - Any task requiring python code generation and execution which cannot be answered by other tools.
-        - For example:
-            - Radiomics analysis  
-            - Segmentation (e.g., TotalSegmentator)  
-            - Image preprocessing / postprocessing  
-            - Data analysis, statistics, and visualization not covered by other tools  
-            - May also handle preprocessing or postprocessing for other tools.
-
         ### MONAI Inference (`monai_infer`)
-        - Runs MONAI bundles for segmentation.  
-        - Provide full image paths via `image_path`.  
-        - Do not confuse MONAI with TotalSegmentator (different systems).  
         - Bundle-specific instructions are provided here: {Monai_Instructions}.
 
         ### Imaging Segmentation (`imaging`)
         - Performs segmentation using TotalSegmentator.  
-        - **Task-specific rules**:  
-        - If using `task="total"` or `task="total_mr"`: you may specify `roi_subset` values for specific organs/tissues.  
-        - For all other tasks: **never** specify `roi_subset` (segmentation covers all ROIs by default).  
-        - Incorrect use of `roi_subset` will cause errors.  
-        - **Special rule**: For liver_tumor segmentation, use `task="liver_vessels"` with no `roi_subset`.  
         - Mappings provided for TotalSegmentator tasks and subsets:  
         - CT: {TS_CT}  
         - MRI: {TS_MRI}  
 
-        ### Radiomics (`radiomics`)
-        - Extracts quantitative features:  
-        - First-order statistics  
-        - Shape descriptors  
-        - Texture features (GLCM, GLRLM, GLSZM, NGTDM, GLDM)  
-        - Can also compute on filtered images (wavelet, LoG, etc.)  
-        - Restrictions:  
-        - Accepts exactly **one image–mask pair at a time**.  
-        - For multiple masks on one image, run tool separately per mask.  
-
-        ### Visualization (`viz_slider`)
-        - Displays interactive slider for images/masks (nifti) automatically in UI (may not work for every case).  
-        - Rules:  
-        - If asked to **segment + visualize**:  
-            - First run a segmentation tool,  
-            - Then use `viz_slider` with the produced mask paths.  
-        - Do not attempt segmentation and visualization in a single step (UI will only show the original image). 
-        - Other kinds of interactive plots (e.g., plotly) and other visualizatoins like images can be generated using the `code_gen` tool. These will be automatically displayed in the UI.
-
+        ### TCIA Download (`tcia_download`)
+        - You don't have an API key for this currently. Makse sure to use the proper method for download without API.
         ---
 
         ## Post-Tool Result Handling
@@ -241,7 +185,7 @@ def build_graph(checkpointer=None):
     ))
 
     print("TOOLS:", [t.name for t in TOOL_REGISTRY])
-    llm = ChatOpenAI(model="gpt-5-nano", reasoning_effort="low").bind_tools(TOOL_REGISTRY)
+    llm = ChatOpenAI(model="gpt-5-nano", reasoning_effort="medium").bind_tools(TOOL_REGISTRY)
     tool_node = ToolNode(tools=TOOL_REGISTRY)  
 
     async def call_model(state: MessagesState):
@@ -366,14 +310,24 @@ async def _render_payload(payload: Dict[str, Any]):
     # Files
     files = outputs.get("files", [])
     output_dir = outputs.get("output_dir")
+    tool = outputs.get("tool", "unknown_tool")
     if not files and output_dir and Path(output_dir).exists():
         files = [str(f) for f in Path(output_dir).rglob("*") if f.is_file()]
     if files:
         zip_tmpdir = Path(tempfile.mkdtemp(prefix="vi_zip_"))
         zip_path = zip_tmpdir / "download.zip"
         await _zip_paths(files, zip_path)
+        if tool == "dicom2nifti":
+            output_content = f"**Dicom to Nifti conversion complete:**\n- Nifti Files: {len(files)}\n\nClick to download:"
+        elif tool == "tcia_download":
+            output_content = f"**TCIA Download complete:**\n- Items: {len(files)}\n\nClick to download:"
+        elif tool == "midrc_download":
+            output_content = f"**MIDRC Download complete:**\n- Items: {len(files)}\n\nClick to download:"
+        else:
+            output_content = f"**Files ready**\n- Items: {len(files)}\n\nClick to download:"
+
         await cl.Message(
-            content=f"**Files ready**\n- Items: {len(files)}\n\nClick to download:",
+            content=output_content,
             elements=[cl.File(name=zip_path.name, path=str(zip_path))]
         ).send()
 
@@ -389,13 +343,15 @@ class VoxelInsightHandler(BaseCallbackHandler):
         self.tool_descriptions = {
             "idc_query": "IDC Query Tool",
             "bih_query": "BIH Query Tool",
-            "imaging": "TotalSegmentator Segmentation",
-            "monai_infer": "Monai Infer Tool",
+            "imaging": "TotalSegmentator Segmentation - this may take a while",
+            "monai_infer": "Monai Infer Tool - this may take a while",
             "radiomics": "Radiomics Analysis",
-            "viz_slider": "Visualizing Slider",
+            "viz_slider": "Slider Visualization Tool",
             "dicom_to_nifti": "DICOM to NIfTI Conversion",
             "code_gen": "Code Generation",
             "midrc_query": "MIDRC Query Tool",
+            "midrc_download": "MIDRC Download Tool",
+            "tcia_download": "TCIA Download Tool",
             "universeg": "Universeg Segmentation",
         }
 

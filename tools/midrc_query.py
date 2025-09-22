@@ -36,7 +36,7 @@ class MIDRCQueryAgent:
         )
         code = extract_code_block(comp.choices[0].message.content)
         print(code)
-        local_env = {"df_MIDRC": self.df_MIDRC, "cred": "/Users/adhrith/Downloads/credentials.json", "pd": pd, "plt": plt, "io": io, "os": os, "duckdb": duckdb}
+        local_env = {"df_MIDRC": self.df_MIDRC, "cred": "/Users/adhrith/Downloads/midrc_credentials.json", "pd": pd, "plt": plt, "io": io, "os": os, "duckdb": duckdb}
         out = run_user_code(code, local_env)
         res = out.get("res_query")
 
@@ -59,7 +59,13 @@ class MIDRCQueryArgs(BaseModel):
 
 @toolify_agent(
     name="midrc_query",
-    description="Query the MIDRC dataframe using python. Returns previews or aggregates. Can also download files from MIDRC using gen3.",
+    description=(
+    "Can query MIDRC and answer MIDRC related questions that bih_query cannot answer (by default use BIH query for MIDRC related questions)."
+    "Canot download files from MIDRC using gen3. Use the midrc_download tool for that."
+    "Capabilities: return dataframes, summaries, plots, and text"
+    "Plots will automatically be rendered in the chat UI. Other outputs will not automatically be shown in the chat UI."
+    "For MIDRC plots: request them directly from this tool or bih_query (it can query + plot in one step)"
+    ),
     args_schema=MIDRCQueryArgs,
     timeout_s=120,
 )

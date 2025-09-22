@@ -114,11 +114,13 @@ class CodeExecArgs(BaseModel):
 @toolify_agent(
     name="code_gen",
     description=(
-        "Execute LLM-generated Python against local context (files, IDC data, imaging libs). "
-        "Returns preview/text/files when applicable."
-        "The code_gen tool can be used for a wide variety of tasks including data analysis, visualization, and general computation."
-        "Use the code_gen tool when the user requests tasks that require custom code execution, data manipulation, or analysis beyond predefined tools."
-        "The code_gen tool can do radiomics analysis, segmentation using total segmentator, image processing, general data analysis and visualization, and many more general tasks which can't be done by other tools."
+        "Use for arbitrary Python code generation and execution." 
+        "Applicable tasks:"
+        "- For creating UI outputs in the proper format (e.g., plotly charts, images, files). Outputs like plotly sliders and matplotlib images are automatically shown by the UI." 
+        "- Any task requiring python code generation and execution which cannot be answered by other tools."
+        "- For example: Radiomics analysis; Segmentation (e.g., TotalSegmentator); Image preprocessing / postprocessing; Data analysis, statistics, and visualization not covered by other tools; May also handle preprocessing or postprocessing for other tools."
+        "Outputs like files stored locally can be shown as download links in the UI. Plots and plotly charts are automatically rendered in the UI."
+        "Use the code_gen tool when the user requests tasks that require custom python code execution, data manipulation, or analysis beyond predefined tools."
     ),
     args_schema=CodeExecArgs,
     timeout_s=600,

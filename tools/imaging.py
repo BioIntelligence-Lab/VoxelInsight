@@ -149,11 +149,16 @@ class ImagingArgs(BaseModel):
 @toolify_agent(
     name="imaging",
     description=(
-        "Run organ/tissue segmentation on CT scans with TotalSegmentator. "
+        "Performs segmentation on CT scans and MRI scans using TotalSegmentator." 
         "Takes a NIfTI file, runs the chosen task (default: 'total'), and outputs NIfTI masks. "
         "Supports filtering results to requested ROIs and fast/accurate modes. "
         "Saves segmentation files to a temp directory and returns paths."
         "Outputs include: summary dict, segmentation files, and ROI→file mapping."
+        "Task-specific rules:"
+        "- If using `task=total` or `task=total_mr`: you may specify `roi_subset` values for specific organs/tissues. For all other tasks: never specify `roi_subset`."
+        "- Incorrect use of `roi_subset` will cause errors."
+        "- Special rule: For liver_tumor segmentation, use `task=liver_vessels` with no `roi_subset`."  
+        "- TotalSegmentator only accepts certain task names and roi subsets. You are provided with these."
     ),
     args_schema=ImagingArgs,
     timeout_s=600,

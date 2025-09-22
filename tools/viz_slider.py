@@ -291,9 +291,14 @@ class VizSliderArgs(BaseModel):
 @toolify_agent(
     name="viz_slider",
     description=(
-        "Create a slice slider visualization for a 3D CT image with optional mask overlays. "
+        "Displays interactive slider for a 3D CT image (nifti) with optional mask overlays automatically in UI (may not work for every case)."  
         "Accepts image path or array and optional masks (paths/arrays). "
         "Applies WL/WW or per slice min max, overlays masks with colormaps/alpha, and returns a Plotly Figure which the user and see and interact with in chat."
+        "Rules:"  
+        "- If asked to segment + visualize: First run a segmentation tool, then use `viz_slider` with the produced mask paths."
+        "- Do not attempt segmentation and visualization in a single step (UI will only show the original image)."
+        "- Other kinds of interactive plots (e.g., plotly) and other visualizatoins like images can be generated using the `code_gen` tool. These will be automatically displayed in the UI."
+
     ),
     args_schema=VizSliderArgs,
     timeout_s=120,

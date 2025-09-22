@@ -94,9 +94,9 @@ class RadiomicsArgs(BaseModel):
 @toolify_agent(
     name="radiomics",
     description=(
-        "Run radiomics feature extraction ussing llm to generate code which is executed. "
-        "Requires image_path; mask_paths optional. "
-        "Returns a small preview and optional files."
+        "Runs radiomics feature extraction (with pyradiomics) using llm to generate code which is executed."
+        "- Extracts quantitative features: First-order statistics, Shape descriptors, Texture features (GLCM, GLRLM, GLSZM, NGTDM, GLDM0, Can also compute on filtered images (wavelet, LoG, etc.)" 
+        "- Restrictions: Accepts exactly **one image–mask pair at a time. For multiple masks on one image, run tool separately per mask."
     ),
     args_schema=RadiomicsArgs,
     timeout_s=600,

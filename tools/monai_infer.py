@@ -230,9 +230,9 @@ class MonaiArgs(BaseModel):
 @toolify_agent(
     name="monai",
     description=(
-        "Run MONAI bundle inference using llm to generate code which is executed. "
-        "Requires image_path"
-        "Returns segmentation files and/or output_dir when available."
+        "Run MONAI bundle inference using llm to generate code which is executed."
+        "Do not confuse MONAI with TotalSegmentator (different systems)." 
+        "Returns segmentation files and/or output_dir when available. Output files stored locally will be shown as download links in the UI."
         "The MONAI agent can generate custom code for pre processing, inference, and post processing. You may pass specific instructions to the agent to guide this code generation and prevent errors."
     ),
     args_schema=MonaiArgs,
