@@ -26,7 +26,7 @@ class MIDRCQueryAgent:
             {"role": "system", "content": self.system_prompt},
             {
                 "role": "user",
-                "content": f"{user_text}\n\n=== df_MIDRC Columns ===\n{self.df_MIDRC.columns.tolist()}",
+                "content": f"{user_text}\n\n=== df_MIDRC Columns ===\n{self.df_MIDRC.columns.tolist()}=== df_MIDRC Example Columns ===\n{self.df_MIDRC.head(3).to_dict(orient='records')}",
             },
         ]
         comp = await self.client.chat.completions.create(
@@ -60,11 +60,11 @@ class MIDRCQueryArgs(BaseModel):
 @toolify_agent(
     name="midrc_query",
     description=(
-    "Can query MIDRC and answer MIDRC related questions that bih_query cannot answer (by default use BIH query for MIDRC related questions)."
+    "Can query MIDRC, build cohorts, answer MIDRC related questions, and more."
     "Canot download files from MIDRC using gen3. Use the midrc_download tool for that."
     "Capabilities: return dataframes, summaries, plots, and text"
     "Plots will automatically be rendered in the chat UI. Other outputs will not automatically be shown in the chat UI."
-    "For MIDRC plots: request them directly from this tool or bih_query (it can query + plot in one step)"
+    "For MIDRC plots: request them directly from this tool (it can query + plot in one step)"
     ),
     args_schema=MIDRCQueryArgs,
     timeout_s=120,

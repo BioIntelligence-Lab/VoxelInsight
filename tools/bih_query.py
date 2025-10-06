@@ -59,7 +59,7 @@ class BIHQueryArgs(BaseModel):
         "Handles all BIH tasks."
         "The MIDRC-BIH serves as a centralized data discovery and query infrastructure that links diverse and independent data repositories including MIDRC, Stanford AIMI, IDC, NIHCC, TCIA, and ACRdart."
         "The bih_query tool can query and answer questions about data repositories including MIDRC, Stanford AIMI, IDC, NIHCC, TCIA, and ACRdart using python. It can return dataframes, plots, and text. When dataframes or plots are returned, they will be shown in the chat UI automatically."
-        "By default use this tools for any questions about the BIH, AIMI, NIHCC, TCIA, MIDRC, and ACRdart datasets. For questions about IDC use the `idc_query` tool."
+        "By default use this tools for any questions about the BIH, AIMI, NIHCC, TCIA, and ACRdart datasets. For questions about IDC use the `idc_query` tool and more midrc use the `midrc_query` tool."
         "This tool cannot download files from any of the repositories. For download requests you may use specialized tools specific to the dataset if available."
         "This tool can generate matplotlib plots"
         "matplotlib plots will automatically be rendered in the chat UI. Other outputs will not automatically be shown in the chat UI"

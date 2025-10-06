@@ -52,7 +52,30 @@ def normalize_task_result(res) -> ToolReturn:
         tmp.write_bytes(out.read())
         ui.append({"kind":"binary_path","path":str(tmp)})
     elif isinstance(out, dict):
-        outputs.update(out)
+        for k, v in out.items():
+            if isinstance(v, pd.DataFrame):
+                outputs[f"{k}_df_preview"] = {
+                    "rows": v.head(50).to_dict("records"),
+                    "nrows": len(v),
+                }
+            elif isinstance(v, Figure):
+                tmp = Path(tempfile.mkdtemp()) / f"{k}_plot.png"
+                v.savefig(tmp, bbox_inches="tight")
+                ui.append({"kind": "image_path", "path": str(tmp)})
+            elif isinstance(v, go.Figure):
+                tmp = Path(tempfile.mkdtemp()) / f"{k}_plotly.json"
+                tmp.write_text(json.dumps(v, cls=plotly.utils.PlotlyJSONEncoder))  # type: ignore
+                ui.append({"kind": "plotly_json_path", "path": str(tmp)})
+            elif hasattr(v, "read"):
+                tmp = Path(tempfile.mkdtemp()) / f"{k}_blob.bin"
+                try:
+                    v.seek(0)
+                except Exception:
+                    pass
+                tmp.write_bytes(v.read())
+                ui.append({"kind": "binary_path", "path": str(tmp)})
+            elif v is not None:
+                outputs[k] = v
     elif out is not None:
         outputs["text"] = str(out)
 

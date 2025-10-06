@@ -7,7 +7,8 @@ import tempfile
 
 from core.state import Task, TaskResult, ConversationState
 
-CRED_PATH = "/Users/adhrith/Downloads/midrc_credentials.json"
+#CRED_PATH = "/Users/adhrith/Downloads/midrc_credentials.json"
+CRED_PATH = os.getenv("MIDRC_CRED", "~/midrc_credentials.json")
 ENDPOINT  = "data.midrc.org"                                   
 DEFAULT_OUTDIR = "midrc_downloads"                             
 

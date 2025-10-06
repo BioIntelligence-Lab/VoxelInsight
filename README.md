@@ -1,6 +1,6 @@
 # 🧠 VoxelInsight
 
-**VoxelInsight** is a conversational AI assistant for biomedical imaging that bridges large-scale data repositories and advanced image analysis tools — all through natural language. Built with Chainlit and OpenAI’s GPT-4o, VoxelInsight turns plain English into powerful radiology workflows.
+**VoxelInsight** is a conversational AI assistant for biomedical imaging that bridges large-scale data repositories and advanced image analysis tools — all through natural language. Built with Chainlit and OpenAI’s GPT-5, VoxelInsight turns plain English into powerful radiology workflows.
 
 ---
 
@@ -20,7 +20,7 @@
   - “How many MRI scanners were used in the UPenn GBM dataset?”
 
 ### 🧠 AI-Powered Imaging Analysis
-- **Segmentation**: Automatically segment organs, lesions, or tumors using **TotalSegmentator**
+- **Segmentation**: Automatically segment organs, lesions, or tumors using **TotalSegmentator** and **MONAI**
 - **Radiomics**: Extract texture, shape, and first-order features using **PyRadiomics**
 - **Clinical Modeling**: Train models to predict clinical endpoints
 - Supports **DICOM** and **NIfTI** inputs
@@ -29,29 +29,123 @@
 
 ## ⚙️ Installation & Setup
 
-### 🐍 Requirements
-- Python 3.9 or higher
-- pip (Python package installer)
+### 0) **Requirements**
+- macOS (Apple Silicon) or Linux
+- Python 3.10
+- Docker (for PostgreSQL + S3)
+- (macOS only) Colima may be required for Docker compatibility
 
-### 📥 Step-by-Step Installation
+### 1) **Clone the repository**:
 
-1. **Clone the repository**:
-   
-   git clone https://github.com/BioIntelligence-Lab/VoxelInsight.git
-   cd voxelinsight
+``` bash
+git clone https://github.com/BioIntelligence-Lab/VoxelInsight.git
+cd voxelinsight
+```
 
-2. **Install dependencies**
+### 2) **Create & activate a clean environment**:
 
-    pip install -r requirements.txt
-  
-3. **Setup Chainlit environment variables**
+``` bash
+python3.10 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip setuptools wheel
+```
 
-   Create a file named .env in the same folder as your app.py file. Add your OpenAI API key in the OPENAI_API_KEY variable.
-   
-4. **Run the Application**
+If you prefer conda use this:
 
-   chainlit run app.py -w
-   
+``` bash
+conda create -n voxelinsight python=3.10 -y
+conda activate voxelinsight
+python -m pip install -U pip setuptools wheel
+python -m pip install "numpy<2.0" "SimpleITK>=2.2"
+python -m pip install "pyradiomics==3.0.1" --no-build-isolation
+python -m pip install -r requirements.txt
+```
+
+### 3) **Install dependencies**
+
+``` bash
+python -m pip install "numpy<2.0" "SimpleITK>=2.2"
+python -m pip install "pyradiomics==3.0.1" --no-build-isolation
+pip install -r requirements.txt
+``` 
+
+### 4) **Setup Environment**
+
+Add your keys to the .env file
+
+``` bash
+# OpenAI / model keys
+OPENAI_API_KEY=sk-...
+
+# Chainlit auth (GitHub OAuth)
+OAUTH_GITHUB_CLIENT_ID=...
+OAUTH_GITHUB_CLIENT_SECRET=...
+CHAINLIT_AUTH_SECRET=some-long-random-string
+
+# Optional: MIDRC credential file for downloads
+MIDRC_CRED=/absolute/path/to/midrc_credentials.json
+
+# Database (preset)
+DATABASE_URL=postgresql://root:root@localhost:5432/postgres
+```
+
+### How to obtain keys
+#### OAUTH_GITHUB_CLIENT_ID / OAUTH_GITHUB_CLIENT_SECRET:
+------
+Go to GitHub [Developer Settings → OAuth Apps](https://github.com/settings/developers)
+
+Create a new Oauth App.
+
+  - Homepage URL: http://localhost:8000
+  - Callback URL: http://localhost:8000/auth/callback
+
+Copy the Client ID and Client Secret into .env.
+
+#### CHAINLIT_AUTH_SECRET
+-----
+Any long random string (e.g., openssl rand -hex 32).
+
+#### MIDRC_CRED (optional for MIDRC downloads):
+------
+Obtain credentials from MIDRC:
+  - Go to [MIDRC](https://www.midrc.org/data-launch-page).
+  - Click option "Centralized data: MIDRC Data Commons".
+  - Create an account and log in (top right corner).
+  - Click profile icon in top right and select "View Profile".
+  - Create a new API key and download JSON file.
+
+Save the JSON file locally and point MIDRC_CRED to its absolute path. 
+
+### 5) **Setup a local database**
+
+The defaul DATABASE_URL points to:
+
+``` bash
+postgresql://root:root@localhost:5432/postgres
+```
+
+To initialize this database:
+
+``` bash
+# Start PostgreSQL + S3 services
+docker compose up -d
+
+# Apply Prisma schema migrations (once per machine)
+chainlit datalayer migrate
+```
+On macOS, you may need to run Docker with Colima
+
+### 6) **Run the Application**
+``` bash
+chainlit run app.py
+```  
+
+To select a different port:
+
+``` bash
+chainlit run app.py -p 3001
+```
+
 ---
 
 ## 🧪 Example Prompts
@@ -99,3 +193,41 @@ We welcome contributions including:
 
 For major features or ideas, please open an issue to start a discussion.  
 Let’s shape the future of imaging AI together!
+
+**How to contribute a new tool:**
+
+1. Create a new file in tools/, e.g. tools/my_tool.py
+2. Define args schema with Pydantic for clean API
+3. Implement the agent class with an async run(task, state) method
+4. Wrap with toolify_agent so the supervisor can call it
+5. Configure it at startup in app.py via configure_my_tool()
+6. Add description so the LLM supervisor knows when to use it
+
+For working references check tools/
+
+**Example Tool Stub:**
+
+```python
+class MyToolAgent:
+    name = "your_tool"
+    model = None
+
+    async def run(self, task: Task, state: ConversationState) -> TaskResult:
+        arg1 = task.kwargs.get("arg1")
+        # Tool Functionality…
+        return TaskResult(output={"text": f"Processed {arg1}"})
+```
+
+register it with
+
+```python
+@toolify_agent(
+    name="your_tool",
+    description="Describe your tool’s function here.",
+    args_schema=MyToolArgs,
+)
+async def my_tool_runner(...):
+    # call agent.run()
+```
+
+
