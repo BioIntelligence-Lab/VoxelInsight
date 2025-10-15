@@ -38,6 +38,7 @@ import tools.midrc_query as midrc_mod
 import tools.midrc_download as midrc_dl_mod
 import tools.bih_query as bih_mod
 import tools.tcia_download as tcia_dl_mod
+import tools.idc_download as idc_dl_mod
 from tools.shared import TOOL_REGISTRY
 
 @cl.oauth_callback
@@ -84,6 +85,7 @@ bih_mod.configure_bih_query_tool(
 )
 midrc_dl_mod.configure_midrc_download_tool()
 tcia_dl_mod.configure_tcia_download_tool()
+idc_dl_mod.configure_idc_download_tool()
 
 _ = dq_mod.idc_query_runner
 _ = img_mod.imaging_runner
@@ -95,6 +97,7 @@ _ = midrc_mod.midrc_query_runner
 _ = bih_mod.bih_query_runner
 _ = midrc_dl_mod.midrc_download_runner
 _ = tcia_dl_mod.tcia_download_runner
+_ = idc_dl_mod.idc_download_runner
 
 def build_graph(checkpointer=None):
     policy = SystemMessage(content=(
@@ -139,6 +142,7 @@ def build_graph(checkpointer=None):
         - Tools do not have any context other than the instructions/arguments you provide to them. When using a new tool assume you're starting from scratch and provide any required context.
         - Don't show locally stored file paths to the user since they cannot access them anyways (although some testers may be able to). Some tools may automatically provide download links for files stored locally, but if not you can use the `code_gen` tool to generate the proper outputs if needed.
         - Plotly figures can only be generated using the `code_gen` tool or the "viz_slider" tool. The UI automatically displays plotly figures when generated properly.
+        - When users want a file download, if possible always assume that they want you to download it dirrectly from the dataset using specialized download tools if available. If no specialized download tool is available for the dataset, inform the user.
 
         ---
 
@@ -155,7 +159,7 @@ def build_graph(checkpointer=None):
 
         ### TCIA Download (`tcia_download`)
         - You don't have an API key for this currently. Make sure to use the proper method for download without API.
-        - These are the TCIA collections you can download from: 4D-Lung, A091105, ACNS0332, ACRIN-6698, ACRIN-Contralateral-Breast-MR, ACRIN-FLT-Breast, ACRIN-HNSCC-FDG-PET-CT, ACRIN-NSCLC-FDG-PET, AHEP0731, AHOD0831.
+        - These are the TCIA collections you can download directly from using the `tcia_download` tool (although there are more collections with metadata in the BIH for querying the datasets without download so refer to BIH if a user asks about TCIA as a whole): 4D-Lung, A091105, ACNS0332, ACRIN-6698, ACRIN-Contralateral-Breast-MR, ACRIN-FLT-Breast, ACRIN-HNSCC-FDG-PET-CT, ACRIN-NSCLC-FDG-PET, AHEP0731, AHOD0831.
         - If a user requests a download from a different collection, inform them that you cannot complete the task.
         ---
 
@@ -448,6 +452,10 @@ async def on_message(message: cl.Message):
 @cl.on_chat_resume
 async def on_chat_resume(thread: ThreadDict):
     pass
+
+@cl.action_callback("action_button")
+async def on_action(action):
+    await action.remove()
 
 @cl.set_starters
 async def set_starters():

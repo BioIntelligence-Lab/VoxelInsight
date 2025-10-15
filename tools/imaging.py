@@ -24,8 +24,8 @@ async def _run_ts_stream(cmd, on_progress):
         s = line.decode(errors="ignore").strip()
         buf.append(s)
         ls = s.lower()
-        if "inference" in ls or "predict" in ls:
-            await on_progress(50, "Running inference")
+        #if "inference" in ls or "predict" in ls:
+            #await on_progress(50, "Running inference")
     rc = await proc.wait()
     out = "\n".join(buf)
     if rc != 0:
@@ -44,8 +44,7 @@ class ImagingAgent:
             return TaskResult(output="No file provided for imaging.")
 
         if len(task.files) == 1:
-            await update_progress(0, "Starting")
-            await update_progress(5, "Smoke test")
+            #await update_progress(0, "Starting")
 
             raw_path = pathlib.Path(task.files[0])
 
@@ -88,11 +87,11 @@ class ImagingAgent:
             if task.kwargs.get("fast", True):
                 cmd += ["--fast"]
 
-            await update_progress(20, "Running TotalSegmentator")
+            #await update_progress(20, "Running TotalSegmentator")
             try:
                 await _run_ts_stream(cmd, update_progress)
             except subprocess.CalledProcessError as e:
-                await update_progress(100, "Failed")
+                #await update_progress(100, "Failed")
                 msg = (
                     "TotalSegmentator failed.\n\n"
                     f"Command: {' '.join(cmd)}\n"
@@ -100,7 +99,7 @@ class ImagingAgent:
                 )
                 return TaskResult(output=msg)
 
-            await update_progress(100, "TotalSegmentator Done")
+            #await update_progress(100, "TotalSegmentator Done")
 
             seg_paths = [
                 os.path.join(out_dir, f)
@@ -142,7 +141,7 @@ class ImagingAgent:
             input_paths = [pathlib.Path(p) for p in task.files]
             state.memory["image_paths"] = [str(p) for p in input_paths]
 
-            await update_progress(2, "Preparing batch")
+            #await update_progress(2, "Preparing batch")
 
             fixed_paths: List[pathlib.Path] = []
             for p in input_paths:
@@ -184,7 +183,7 @@ class ImagingAgent:
                 slice_start = BAR_START + SLICE * (idx - 1)
                 slice_end = BAR_START + SLICE * idx
 
-                await update_progress(int(slice_start), f"Starting {idx}/{total}")
+                #await update_progress(int(slice_start), f"Starting {idx}/{total}")
 
                 case_dir = os.path.join(out_root, pathlib.Path(orig).stem)
                 os.makedirs(case_dir, exist_ok=True)
@@ -202,12 +201,12 @@ class ImagingAgent:
                 async def _case_progress(local_pct: int, label: str, **extras):
                     local = max(0, min(100, int(local_pct)))
                     global_pct = int(slice_start + (local / 100.0) * (slice_end - slice_start))
-                    await update_progress(global_pct, label)
+                    #await update_progress(global_pct, label)
 
                 try:
                     await _run_ts_stream(cmd, _case_progress)
                 except subprocess.CalledProcessError as e:
-                    await update_progress(100, "Failed")
+                    #await update_progress(100, "Failed")
                     return TaskResult(output=("TotalSegmentator failed.\n\n"
                                             f"Command: {' '.join(cmd)}\n"
                                             f"STDOUT/STDERR:\n{e.stderr or e.output}"))
@@ -240,12 +239,12 @@ class ImagingAgent:
                     "matched": seg_map,
                 })
 
-                await update_progress(int(slice_end), f"Finished {idx}/{total}")
+                #await update_progress(int(slice_end), f"Finished {idx}/{total}")
 
             state.memory["segmentations_batch"] = seg_paths_batch
             state.memory["segmentations_map_batch"] = seg_map_batch
 
-            await update_progress(100, "Done")
+            #await update_progress(100, "Done")
 
             summary = {
                 "agent": "imaging",
@@ -311,11 +310,11 @@ class ImagingArgs(BaseModel):
         "Task-specific rules:"
         "- If using `task=total` or `task=total_mr`: you may specify `roi_subset` values for specific organs/tissues. For all other tasks: never specify `roi_subset`."
         "- Incorrect use of `roi_subset` will cause errors."
-        "- Special rule: For liver_tumor segmentation, use `task=liver_vessels` with no `roi_subset`."  
+        "- Special rule: For liver_tumor segmentation, use `task=liver_vessels` with no `roi_subset`. Also you cannot use --fast for task=liver_vessels."  
         "- TotalSegmentator only accepts certain task names and roi subsets. You are provided with these."
     ),
     args_schema=ImagingArgs,
-    timeout_s=600,
+    timeout_s=1200,
 )
 async def imaging_runner(
     file_path: Optional[str] = None,

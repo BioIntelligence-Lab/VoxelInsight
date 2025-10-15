@@ -1,4 +1,3 @@
-# tools/monai_infer.py
 import os, io, json, tempfile, shutil
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Literal

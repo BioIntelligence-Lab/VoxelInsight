@@ -1,13 +1,12 @@
-# tools/midrc_download.py
 import os, asyncio
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 import contextlib
 import tempfile
+import chainlit as cl
 
 from core.state import Task, TaskResult, ConversationState
 
-#CRED_PATH = "/Users/adhrith/Downloads/midrc_credentials.json"
 CRED_PATH = os.getenv("MIDRC_CRED", "~/midrc_credentials.json")
 ENDPOINT  = "data.midrc.org"                                   
 DEFAULT_OUTDIR = "midrc_downloads"                             
@@ -25,62 +24,79 @@ class MIDRCDownloadAgent:
         timeout_s   = int(kw.get("timeout_s", 3600))
         parallel    = int(kw.get("parallel", 2))
 
-        try:
-            # validate cred path
-            credp = Path(CRED_PATH).expanduser().resolve()
-            if not credp.exists():
-                return TaskResult(output=f"Cred file not found at {credp}")
+        res = await cl.AskActionMessage(
+            content="Would you like to download files from MIDRC now?",
+            actions=[
+                cl.Action(name="continue", payload={"value": "continue"}, label="✅ Continue"),
+                cl.Action(name="cancel", payload={"value": "cancel"}, label="❌ Cancel"),
+            ],
+        ).send()
 
-            # ensure output dir
-            out_root = Path(output_dir).expanduser().resolve()
-            out_root.mkdir(parents=True, exist_ok=True)
+        if res and res.get("payload").get("value") == "continue":
+            await cl.Message(
+                content="Starting MIDRC download...",
+            ).send()
 
-            # gather ids
-            ids: List[str] = []
-            if object_id:
-                ids.append(object_id)
-            if object_ids:
-                ids.extend([u for u in object_ids if u])
+            try:
+                # validate cred path
+                credp = Path(CRED_PATH).expanduser().resolve()
+                if not credp.exists():
+                    return TaskResult(output=f"Cred file not found at {credp}")
 
-            if not ids:
-                return TaskResult(output="Provide object_id or object_ids.", artifacts={"output_dir": str(out_root)})
+                # ensure output dir
+                out_root = Path(output_dir).expanduser().resolve()
+                out_root.mkdir(parents=True, exist_ok=True)
 
-            before = self._snapshot_files(out_root)
-            logs: List[str] = []
+                # gather ids
+                ids: List[str] = []
+                if object_id:
+                    ids.append(object_id)
+                if object_ids:
+                    ids.extend([u for u in object_ids if u])
 
-            # download
-            sem = asyncio.Semaphore(max(1, min(16, parallel)))
+                if not ids:
+                    return TaskResult(output="Provide object_id or object_ids.", artifacts={"output_dir": str(out_root)})
 
-            async def _one(uid: str):
-                async with sem:
-                    return await self._pull_object(str(credp), ENDPOINT, uid, out_root, timeout_s)
+                before = self._snapshot_files(out_root)
+                logs: List[str] = []
 
-            results = await asyncio.gather(*[_one(u) for u in ids], return_exceptions=True)
+                # download
+                sem = asyncio.Semaphore(max(1, min(16, parallel)))
 
-            errs = []
-            for r in results:
-                if isinstance(r, Exception):
-                    errs.append(str(r)); continue
-                logs.append(f"{r.get('uid')}: rc={r.get('rc')}")
-                if r.get("rc") != 0:
-                    errs.append(f"{r.get('uid')}: {r.get('stderr') or r.get('stdout')}")
+                async def _one(uid: str):
+                    async with sem:
+                        return await self._pull_object(str(credp), ENDPOINT, uid, out_root, timeout_s)
 
-            if errs:
+                results = await asyncio.gather(*[_one(u) for u in ids], return_exceptions=True)
+
+                errs = []
+                for r in results:
+                    if isinstance(r, Exception):
+                        errs.append(str(r)); continue
+                    logs.append(f"{r.get('uid')}: rc={r.get('rc')}")
+                    if r.get("rc") != 0:
+                        errs.append(f"{r.get('uid')}: {r.get('stderr') or r.get('stdout')}")
+
+                if errs:
+                    return TaskResult(
+                        output="Some downloads failed:\n" + "\n".join(errs[:20]),
+                        artifacts={"output_dir": str(out_root), "logs": logs}
+                    )
+
+                after = self._snapshot_files(out_root)
+                new_files = sorted(after - before)
+                summary = f"Downloaded {len(new_files)} file(s) to {out_root}."
                 return TaskResult(
-                    output="Some downloads failed:\n" + "\n".join(errs[:20]),
-                    artifacts={"output_dir": str(out_root), "logs": logs}
+                    output={"text": summary, "files": new_files, "output_dir": str(out_root), "logs": logs, "tool": self.name},
+                    artifacts={"files": new_files, "output_dir": str(out_root)}
                 )
 
-            after = self._snapshot_files(out_root)
-            new_files = sorted(after - before)
-            summary = f"Downloaded {len(new_files)} file(s) to {out_root}."
-            return TaskResult(
-                output={"text": summary, "files": new_files, "output_dir": str(out_root), "logs": logs, "tool": self.name},
-                artifacts={"files": new_files, "output_dir": str(out_root)}
-            )
+            except Exception as e:
+                return TaskResult(output=f"MIDRCDownload error: {e}")
 
-        except Exception as e:
-            return TaskResult(output=f"MIDRCDownload error: {e}")
+        else:
+            await cl.Message(content="MIDRC download cancelled.",).send()
+            return TaskResult(output="MIDRC download was cancelled by the user via the UI. DO NOT REPEAT without checking with user again if needed.", artifacts={})
 
     # helpers 
     def _snapshot_files(self, dirp: Path) -> set[str]:

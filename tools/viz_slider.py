@@ -1,4 +1,3 @@
-# agents/viz_slider.py
 import numpy as np
 from pathlib import Path
 import nibabel as nib

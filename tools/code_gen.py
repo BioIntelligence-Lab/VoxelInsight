@@ -24,15 +24,8 @@ class CodeExecTool:
         self.system_prompt = system_prompt
         self.df_IDC = df_IDC
 
-    async def run(
-        self,
-        *,
-        instructions: str,
-        files: Optional[List[str]] = None,
-        image_path: Optional[str] = None,
-        mask_paths: Optional[List[str]] = None,
-        last_df_json: Optional[str] = None,  
-    ) -> TaskResult:
+    async def run(self, *, instructions: str, files: Optional[List[str]] = None, image_path: Optional[str] = None, mask_paths: Optional[List[str]] = None, reasoning_effort: str = "medium") -> TaskResult:
+
         files = files or []
         mask_paths = mask_paths or []
 
@@ -42,7 +35,6 @@ class CodeExecTool:
                 "files": files,
                 "image_path": image_path,
                 "mask_paths": mask_paths,
-                "last_df_json": bool(last_df_json),
             }
         }
 
@@ -58,15 +50,9 @@ class CodeExecTool:
             model=self.model,
             temperature=1,
             messages=messages,
+            reasoning_effort=reasoning_effort,
         )
         code = extract_code_block(comp.choices[0].message.content)
-
-        last_df: Optional[pd.DataFrame] = None
-        if last_df_json:
-            try:
-                last_df = pd.read_json(last_df_json, orient="table")
-            except Exception:
-                pass
 
         local_env: Dict[str, Any] = {
             "pd": pd,
@@ -75,13 +61,10 @@ class CodeExecTool:
             "os": os,
             "nib": nib,
             "pydicom": pydicom,
-
             "df_IDC": self.df_IDC, 
-
             "FILES": files,
             "IMAGE_PATH": image_path,
             "MASK_PATHS": mask_paths,
-            "LAST_DF": last_df,
         }
 
         out = run_user_code(code, local_env)
@@ -102,19 +85,18 @@ def configure_code_gen_tool(*, system_prompt: str, df_IDC: Optional[pd.DataFrame
 
 
 class CodeExecArgs(BaseModel):
-    instructions: str = Field(..., description="Natural language request for code to run.")
+    instructions: str = Field(..., description="Natural language request for code to run. Keep it concise and to the point (no need to explain expected code structure in detail).")
     files: Optional[List[str]] = Field(None, description="Optional file paths to use in the code.")
     image_path: Optional[str] = Field(None, description="Optional image path (e.g., NIfTI) for convenience.")
     mask_paths: Optional[List[str]] = Field(None, description="Optional mask paths.")
-    last_df_json: Optional[str] = Field(
-        None,
-        description="Optional last table as JSON (orient='table') if you want continuity."
-    )
+    reasoning_effort: str = Field(..., description="Reasoning effort level (select based on difficulty of task): 'minimal', 'low', 'medium', 'high'.")
 
 @toolify_agent(
     name="code_gen",
     description=(
         "Use for arbitrary Python code generation and execution." 
+        "Very versatile and powerful tool for custom tasks. You usually do not need to provide exteremely specific instructions, as the agent is capable of understanding general requests."
+        "Keep instructions concise and to the point."
         "Applicable tasks:"
         "- For creating UI outputs in the proper format (e.g., plotly charts, images, files). Outputs like plotly sliders and matplotlib images are automatically shown by the UI." 
         "- Any task requiring python code generation and execution which cannot be answered by other tools."
@@ -130,7 +112,7 @@ async def code_gen_runner(
     files: Optional[List[str]] = None,
     image_path: Optional[str] = None,
     mask_paths: Optional[List[str]] = None,
-    last_df_json: Optional[str] = None,
+    reasoning_effort: str = "medium",
 ):
     if _CODE is None:
         raise RuntimeError("CodeExec tool not configured. Call configure_code_gen_tool(system_prompt=..., df_IDC=...).")
@@ -139,5 +121,5 @@ async def code_gen_runner(
         files=files,
         image_path=image_path,
         mask_paths=mask_paths,
-        last_df_json=last_df_json,
+        reasoning_effort=reasoning_effort
     )

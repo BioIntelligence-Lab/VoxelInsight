@@ -20,13 +20,14 @@ class DataQueryAgent:
             {"role": "system", "content": self.system_prompt},
             {
                 "role": "user",
-                "content": f"{task.user_msg}\n\n=== df_IDC Columns ===\n{self.df_IDC.columns.tolist()}\n\n=== df_BIH Columns (be extremely careful when chosing which columns to use)===\n{self.df_BIH.columns.tolist()}\n\n=== df_BIH Example Columns ===\n{self.df_BIH.head(3).to_dict(orient='records')}",
+                "content": f"{task.user_msg}\n\n=== df_IDC Columns ===\n{self.df_IDC.columns.tolist()}\n\n=== df_IDC Example Rows ===\n{self.df_IDC.head(3).to_dict(orient='records')}",
             },
         ]
         comp = await self.client.chat.completions.create(
             model=self.model,
             temperature=1,
             messages=messages,
+            reasoning_effort="medium",
         )
         code = extract_code_block(comp.choices[0].message.content)
         print(code)

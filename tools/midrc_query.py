@@ -1,4 +1,3 @@
-# tools/midrc_query.py
 import os, io, pandas as pd, matplotlib.pyplot as plt
 import duckdb
 from openai import AsyncOpenAI

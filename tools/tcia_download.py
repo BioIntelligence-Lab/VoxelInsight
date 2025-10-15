@@ -1,7 +1,7 @@
-# tools/tcia_download.py
 import os, json, pathlib, zipfile, tempfile, time, requests, asyncio
 from typing import Optional, List, Dict, Any
 from pathlib import Path
+import chainlit as cl
 
 from core.state import Task, TaskResult, ConversationState
 from pydantic import BaseModel, Field
@@ -88,74 +88,93 @@ class TCIADownloadAgent:
         overwrite    = bool(kw.get("overwrite", False))
         throttle_s   = float(kw.get("throttle_s", 0.0))
 
-        try:
-            out_root = _ensure_outdir(output_dir, make_subdir, label="tcia")
-            before   = _snapshot(out_root)
+        res = await cl.AskActionMessage(
+            content="Would you like to download files from TCIA now?",
+            actions=[
+                cl.Action(name="continue", payload={"value": "continue"}, label="✅ Continue"),
+                cl.Action(name="cancel", payload={"value": "cancel"}, label="❌ Cancel"),
+            ],
+        ).send()
 
-            modes = sum(bool(x) for x in [series_uid, series_uids, collection])
-            if modes != 1:
-                return TaskResult(output="Provide exactly one of: series_uid, series_uids, collection.",
-                                  artifacts={"output_dir": str(out_root)})
+        if res and res.get("payload").get("value") == "continue":
+            await cl.Message(content="Starting TCIA download...",).send()
 
-            if collection:
-                uid = await asyncio.to_thread(_get_series_from_collection, collection)
-                series_list = [uid]
-            elif series_uid:
-                series_list = [series_uid]
-            else:
-                series_list = [u for u in (series_uids or []) if u]
+            try:
+                out_root = _ensure_outdir(output_dir, make_subdir, label="tcia")
+                before   = _snapshot(out_root)
 
-            remaining_series = series_list[5:]
-            series_list = series_list[:5] 
+                modes = sum(bool(x) for x in [series_uid, series_uids, collection])
+                if modes != 1:
+                    return TaskResult(output="Provide exactly one of: series_uid, series_uids, collection.",
+                                    artifacts={"output_dir": str(out_root)})
 
-            if not series_list:
-                return TaskResult(output="No SeriesInstanceUIDs provided.",
-                                  artifacts={"output_dir": str(out_root)})
-
-            sem = asyncio.Semaphore(max(1, min(16, parallel)))
-            results: List[Dict[str, Any]] = []
-            errors: List[str] = []
-            zips: List[str] = []
-            extracted: List[str] = []
-
-            async def _one(uid: str):
-                async with sem:
-                    try:
-                        dest_zip = out_root / f"{uid}.zip"
-                        info = await asyncio.to_thread(_download_series_zip, uid, dest_zip, v3_fallback, overwrite)
-                        if throttle_s > 0:
-                            await asyncio.sleep(throttle_s)
-                        if extract_zip:
-                            extract_dir = out_root / uid
-                            files = await asyncio.to_thread(_extract_zip, Path(info["zip"]), extract_dir)
-                            return {"ok": True, "uid": uid, "zip": info["zip"], "files": files}
-                        else:
-                            return {"ok": True, "uid": uid, "zip": info["zip"], "files": []}
-                    except Exception as e:
-                        return {"ok": False, "uid": uid, "error": f"{type(e).__name__}: {e}"}
-
-            tasks = [_one(uid) for uid in series_list]
-            for r in await asyncio.gather(*tasks):
-                if r["ok"]:
-                    zips.append(r["zip"])
-                    extracted.extend(r["files"])
+                if collection:
+                    uid = await asyncio.to_thread(_get_series_from_collection, collection)
+                    series_list = [uid]
+                elif series_uid:
+                    series_list = [series_uid]
                 else:
-                    errors.append(f"{r['uid']}: {r['error']}")
+                    series_list = [u for u in (series_uids or []) if u]
 
-            after     = _snapshot(out_root)
-            new_files = sorted(after - before)
-            files_out = new_files if new_files else (zips if zips else [])
+                remaining_series = series_list[5:]
+                series_list = series_list[:5] 
 
-            summary = f"Downloaded {len(series_list)} series; files written: {len(files_out)}; output: {out_root}"
-            if errors:
-                summary += f"\nSome failures ({len(errors)}):\n" + "\n".join(errors[:10])
+                if not series_list:
+                    return TaskResult(output="No SeriesInstanceUIDs provided.",
+                                    artifacts={"output_dir": str(out_root)})
 
-            return TaskResult(
-                output={"text": summary, "files": files_out, "output_dir": str(out_root), "tool": self.name},
-                artifacts={"files": files_out, "output_dir": str(out_root)}
-            )
-        except Exception as e:
-            return TaskResult(output=f"TCIADownload error: {e}")
+                sem = asyncio.Semaphore(max(1, min(16, parallel)))
+                results: List[Dict[str, Any]] = []
+                errors: List[str] = []
+                zips: List[str] = []
+                extracted: List[str] = []
+
+                async def _one(uid: str):
+                    async with sem:
+                        try:
+                            dest_zip = out_root / f"{uid}.zip"
+                            info = await asyncio.to_thread(_download_series_zip, uid, dest_zip, v3_fallback, overwrite)
+                            if throttle_s > 0:
+                                await asyncio.sleep(throttle_s)
+                            if extract_zip:
+                                extract_dir = out_root / uid
+                                files = await asyncio.to_thread(_extract_zip, Path(info["zip"]), extract_dir)
+                                return {"ok": True, "uid": uid, "zip": info["zip"], "files": files}
+                            else:
+                                return {"ok": True, "uid": uid, "zip": info["zip"], "files": []}
+                        except Exception as e:
+                            return {"ok": False, "uid": uid, "error": f"{type(e).__name__}: {e}"}
+
+                tasks = [_one(uid) for uid in series_list]
+                for r in await asyncio.gather(*tasks):
+                    if r["ok"]:
+                        zips.append(r["zip"])
+                        extracted.extend(r["files"])
+                    else:
+                        errors.append(f"{r['uid']}: {r['error']}")
+
+                after     = _snapshot(out_root)
+                new_files = sorted(after - before)
+                files_out = new_files if new_files else (zips if zips else [])
+
+                summary = f"Downloaded {len(series_list)} series; files written: {len(files_out)}; output: {out_root}"
+                if errors:
+                    summary += f"\nSome failures ({len(errors)}):\n" + "\n".join(errors[:10])
+
+                return TaskResult(
+                    output={"text": summary, "files": files_out, "output_dir": str(out_root), "tool": self.name},
+                    artifacts={"files": files_out, "output_dir": str(out_root)}
+                )
+            except Exception as e:
+                return TaskResult(output=f"TCIADownload error: {e}")
+            
+        elif res and res.get("payload").get("value") == "cancel":
+            await cl.Message(content="TCIA download cancelled.").send()
+            return TaskResult(output="TCIA download was cancelled by the user via the UI. DO NOT REPEAT without checking with user again if needed.", artifacts={})
+        
+        else:
+            await cl.Message(content="No response received. TCIA download cancelled.").send()
+            return TaskResult(output="TCIA download was cancelled by the user via the UI. DO NOT REPEAT without checking with user again if needed.", artifacts={})
 
 _TCIA: Optional[TCIADownloadAgent] = None
 
