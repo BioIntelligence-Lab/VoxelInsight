@@ -200,8 +200,9 @@ MIDRC_CRED=/path/to/midrc_credentials.json
 ```
 python midrc_graph_mirror.py
 ```
-
-### Image Processing and AI Agents (these will be set up automatically upon installation -- no additional steps required)
+--
+### Image Processing and AI Agents 
+**Note: these will be set up automatically upon installation -- no additional steps required**
 
 #### 1) Standard Image Processing 
 - NIfTI: Convert any dicom folder to NIfTI format. Upload your dicom folder as a zip file and ask VoxelInsight to convert it to NIfTI.
