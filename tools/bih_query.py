@@ -11,7 +11,7 @@ from tools.shared import toolify_agent, _cs
 
 class BIHQueryAgent:
     name = "bih_query"
-    model = "gpt-5-mini"
+    model = "gpt-5"
 
     def __init__(self, df_BIH: pd.DataFrame, system_prompt: str):
         key = os.getenv("OPENAI_API_KEY")

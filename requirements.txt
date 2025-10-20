@@ -3,8 +3,10 @@ SimpleITK>=2.2
 pyradiomics==3.0.1
 PyYAML>=6.0.1
 openai
+anthropic
 langchain
 langchain-openai
+langchain-anthropic
 langchain-community
 langgraph
 chainlit
@@ -29,3 +31,4 @@ plotly
 asyncpg
 asyncio
 gen3
+duckdb

@@ -4,6 +4,7 @@ import argparse, re
 from io import StringIO
 from pathlib import Path
 from typing import List, Tuple
+import os
 
 import pandas as pd
 import duckdb
@@ -63,6 +64,7 @@ def build_midrc_graph(credentials_json: str,
     out_root = Path(out_dir)
     out_nodes = out_root / "nodes"
     wide_out = wide_out or str(out_root / "midrc_files_wide.parquet")
+    credentials_json = credentials_json or os.path.expanduser(os.getenv("MIDRC_CRED", "~/midrc_credentials.json"))
 
     auth = Gen3Auth(API, refresh_file=credentials_json)
     sub = Gen3Submission(API, auth)
@@ -181,10 +183,10 @@ def build_midrc_graph(credentials_json: str,
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--creds", required=True, help="Path to MIDRC credentials JSON (Gen3 refresh file)")
-    ap.add_argument("--out_dir", required=True, help="Output directory for mirror (parquet files)")
+    ap.add_argument("--creds", help="Path to MIDRC credentials JSON (Gen3 refresh file)")
+    ap.add_argument("--out_dir", default="midrc_mirror", help="Output directory for mirror (parquet files)")
     ap.add_argument("--program", default="Open", help="Program name (default: Open)")
-    ap.add_argument("--wide_out", default=None, help="Final wide parquet path (default: <out_dir>/midrc_files_wide.parquet)")
+    ap.add_argument("--wide_out", default="midrc_mirror/nodes/midrc_files_wide.parquet", help="Final wide parquet path (default: <out_dir>/midrc_files_wide.parquet)")
     args = ap.parse_args()
 
     path = build_midrc_graph(args.creds, args.out_dir, program=args.program, wide_out=args.wide_out)

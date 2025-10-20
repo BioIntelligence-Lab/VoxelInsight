@@ -8,12 +8,15 @@ from pathlib import Path
 from typing import Dict, Optional, List, Any
 import httpx
 
+from core.llm_provider import choose_llm, OpenAISettings, AnthropicSettings
+
 import chainlit as cl
 from chainlit.types import ThreadDict
 from dotenv import load_dotenv
 import pandas as pd
 
 from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import (
     SystemMessage, HumanMessage, AIMessage, ToolMessage, BaseMessage
 )
@@ -56,9 +59,16 @@ from pathlib import Path as _P
 
 IDC_Client = index.IDCClient()
 df_IDC = IDC_Client.index
-df_BIH = pd.read_csv("Data/BIH_Cases_table.csv", low_memory=False)
-df_MIDRC = pd.read_parquet("midrc_mirror/nodes/midrc_files_wide.parquet")
-#df_MIDRC = pd.DataFrame()
+try:
+    df_BIH = pd.read_csv("Data/BIH_Cases_table.csv", low_memory=False)
+except Exception as e:
+    print(f"Warning: could not load BIH data ({e})")
+    df_BIH = pd.DataFrame()
+try:
+    df_MIDRC = pd.read_parquet("midrc_mirror/nodes/midrc_files_wide.parquet")
+except Exception as e:  
+    print(f"Warning: could not load MIDRC data ({e})")
+    df_MIDRC = pd.DataFrame()
 TS_CT = pd.read_csv("Data/TotalSegmentatorMappingsCT.tsv", sep="\t")
 TS_MRI = pd.read_csv("Data/TotalSegmentatorMappingsMRI.tsv", sep="\t")
 Monai_Instructions = _P("Data/monai_bundles_instructions.txt").read_text()
@@ -195,7 +205,8 @@ def build_graph(checkpointer=None):
     ))
 
     print("TOOLS:", [t.name for t in TOOL_REGISTRY])
-    llm = ChatOpenAI(model="gpt-5-nano", reasoning_effort="medium").bind_tools(TOOL_REGISTRY)
+    base_llm = ChatOpenAI(model="gpt-5-nano", temperature=1, reasoning_effort="medium")
+    llm = base_llm.bind_tools(TOOL_REGISTRY)
     tool_node = ToolNode(tools=TOOL_REGISTRY)  
 
     async def call_model(state: MessagesState):

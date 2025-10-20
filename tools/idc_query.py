@@ -4,9 +4,10 @@ from core.state import Task, TaskResult, ConversationState
 from core.utils import extract_code_block
 from core.sandbox import run_user_code
 
+
 class DataQueryAgent:
     name = "idc_query"
-    model = "gpt-5-mini"
+    model = "gpt-5"
 
     def __init__(self, df_IDC: pd.DataFrame, df_BIH: pd.DataFrame, system_prompt: str):
         key = os.getenv("OPENAI_API_KEY")
