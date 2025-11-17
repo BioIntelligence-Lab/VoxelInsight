@@ -4,12 +4,12 @@ import tempfile
 from typing import Optional, List, Dict, Any
 
 import pandas as pd
-from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 
 from core.utils import extract_code_block
 from core.sandbox import run_user_code
 from core.state import TaskResult 
+from core.llm_provider import choose_llm
 
 from tools.shared import toolify_agent  
 
@@ -18,8 +18,11 @@ class RadiomicsAgent:
     model = "gpt-5-nano" 
 
     def __init__(self, system_prompt: str):
-        self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.system_prompt = system_prompt
+        try:
+            self.llm = choose_llm()
+        except Exception:
+            self.llm = None
 
     async def run(
         self,
@@ -29,6 +32,7 @@ class RadiomicsAgent:
         mask_paths: Optional[List[str]] = None,
         featureset: Optional[str] = None,
         out_dir: Optional[str] = None,
+        reasoning_effort: str = "medium",
     ) -> TaskResult:
         if not image_path:
             return TaskResult(output="radiomics: 'image_path' is required.", artifacts={})
@@ -54,12 +58,10 @@ class RadiomicsAgent:
             },
         ]
 
-        comp = await self.client.chat.completions.create(
-            model=self.model,
-            temperature=1,
-            messages=messages,
-        )
-        code = extract_code_block(comp.choices[0].message.content)
+        if self.llm is None:
+            raise RuntimeError("LLM provider is not configured.")
+        content = await self.llm.ainvoke(messages, temperature=1, reasoning_effort=reasoning_effort)
+        code = extract_code_block(content)
 
         local_env: Dict[str, Any] = {
             "os": os,
@@ -90,6 +92,10 @@ class RadiomicsArgs(BaseModel):
     mask_paths: Optional[List[str]] = Field(None, description="List of NIfTI masks.")
     featureset: Optional[str] = Field(None, description="Feature set/YAML path.")
     out_dir: Optional[str] = Field(None, description="Output dir (optional).")
+    reasoning_effort: str = Field(
+        ...,
+        description="Reasoning effort level (select based on task complexity): 'minimal', 'low', 'medium', or 'high'."
+    )
 
 @toolify_agent(
     name="radiomics",
@@ -106,6 +112,7 @@ async def radiomics_runner(
     mask_paths: Optional[List[str]] = None,
     featureset: Optional[str] = None,
     out_dir: Optional[str] = None,
+    reasoning_effort: str = "medium",
 ):
     if _RAD is None:
         raise RuntimeError("Radiomics tool not configured.")
@@ -115,4 +122,5 @@ async def radiomics_runner(
         mask_paths=mask_paths,
         featureset=featureset,
         out_dir=out_dir,
+        reasoning_effort=reasoning_effort,
     )

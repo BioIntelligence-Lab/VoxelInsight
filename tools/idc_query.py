@@ -1,8 +1,8 @@
 import os, io, pandas as pd, matplotlib.pyplot as plt
-from openai import AsyncOpenAI
 from core.state import Task, TaskResult, ConversationState
 from core.utils import extract_code_block
 from core.sandbox import run_user_code
+from core.llm_provider import choose_llm
 
 
 class DataQueryAgent:
@@ -10,13 +10,15 @@ class DataQueryAgent:
     model = "gpt-5"
 
     def __init__(self, df_IDC: pd.DataFrame, df_BIH: pd.DataFrame, system_prompt: str):
-        key = os.getenv("OPENAI_API_KEY")
-        self.client = AsyncOpenAI(api_key=key)
         self.df_IDC = df_IDC
         self.df_BIH = df_BIH
         self.system_prompt = system_prompt
+        try:
+            self.llm = choose_llm()
+        except Exception:
+            self.llm = None
 
-    async def run(self, task: Task, state: ConversationState) -> TaskResult:
+    async def run(self, task: Task, state: ConversationState, reasoning_effort: str = "medium") -> TaskResult:
         messages = [
             {"role": "system", "content": self.system_prompt},
             {
@@ -24,13 +26,10 @@ class DataQueryAgent:
                 "content": f"{task.user_msg}\n\n=== df_IDC Columns ===\n{self.df_IDC.columns.tolist()}\n\n=== df_IDC Example Rows ===\n{self.df_IDC.head(3).to_dict(orient='records')}",
             },
         ]
-        comp = await self.client.chat.completions.create(
-            model=self.model,
-            temperature=1,
-            messages=messages,
-            reasoning_effort="medium",
-        )
-        code = extract_code_block(comp.choices[0].message.content)
+        if self.llm is None:
+            raise RuntimeError("LLM provider is not configured.")
+        content = await self.llm.ainvoke(messages, temperature=1, reasoning_effort=reasoning_effort)
+        code = extract_code_block(content)
         print(code)
         print(f"Running user code:\n{code}\n")
         local_env = {"df_IDC": self.df_IDC, "df_BIH": self.df_BIH, "pd": pd, "plt": plt, "io": io, "os": os,}
@@ -58,6 +57,7 @@ def configure_idc_query_tool(*, df_IDC: pd.DataFrame, df_BIH: pd.DataFrame, syst
 
 class DataQueryArgs(BaseModel):
     instructions: str = Field(..., description="Natural language for the IDC tables.")
+    reasoning_effort: str = Field(..., description="Reasoning effort level (select based on task complexity): 'low', 'medium'. Lower levels are faster (and preferred for most cases)but may produce less accurate results. When a result isn't satisfoctory, try increasing the reasoning effort to 'medium'.")
 
 @toolify_agent(
     name="idc_query",
@@ -70,10 +70,10 @@ class DataQueryArgs(BaseModel):
     args_schema=DataQueryArgs,
     timeout_s=600,
 )
-async def idc_query_runner(instructions: str):
+async def idc_query_runner(instructions: str, reasoning_effort: str = "medium"):
     if _DQ is None:
         raise RuntimeError(
             "IDCQuery tool is not configured."
         )
     task = Task(user_msg=instructions, files=[], kwargs={})
-    return await _DQ.run(task, _cs())
+    return await _DQ.run(task, _cs(), reasoning_effort=reasoning_effort)

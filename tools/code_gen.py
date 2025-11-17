@@ -1,4 +1,3 @@
-# tools/code_gen.py
 import os, io, json
 from typing import List, Optional, Dict, Any
 
@@ -6,12 +5,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import nibabel as nib
 import pydicom
-from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 
 from core.utils import extract_code_block
 from core.sandbox import run_user_code
 from core.state import TaskResult 
+from core.llm_provider import choose_llm
 
 from tools.shared import toolify_agent  
 
@@ -20,9 +19,12 @@ class CodeExecTool:
     model = "gpt-5"
 
     def __init__(self, system_prompt: str, df_IDC: Optional[pd.DataFrame] = None):
-        self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.system_prompt = system_prompt
         self.df_IDC = df_IDC
+        try:
+            self.llm = choose_llm()
+        except Exception:
+            self.llm = None
 
     async def run(self, *, instructions: str, files: Optional[List[str]] = None, image_path: Optional[str] = None, mask_paths: Optional[List[str]] = None, reasoning_effort: str = "medium") -> TaskResult:
 
@@ -46,13 +48,10 @@ class CodeExecTool:
             },
         ]
 
-        comp = await self.client.chat.completions.create(
-            model=self.model,
-            temperature=1,
-            messages=messages,
-            reasoning_effort=reasoning_effort,
-        )
-        code = extract_code_block(comp.choices[0].message.content)
+        if self.llm is None:
+            raise RuntimeError("LLM provider is not configured.")
+        content = await self.llm.ainvoke(messages, temperature=1, reasoning_effort=reasoning_effort)
+        code = extract_code_block(content)
 
         local_env: Dict[str, Any] = {
             "pd": pd,
@@ -89,7 +88,7 @@ class CodeExecArgs(BaseModel):
     files: Optional[List[str]] = Field(None, description="Optional file paths to use in the code.")
     image_path: Optional[str] = Field(None, description="Optional image path (e.g., NIfTI) for convenience.")
     mask_paths: Optional[List[str]] = Field(None, description="Optional mask paths.")
-    reasoning_effort: str = Field(..., description="Reasoning effort level (select based on difficulty of task): 'minimal', 'low', 'medium', 'high'.")
+    reasoning_effort: str = Field(..., description="Reasoning effort level (select based on task complexity): 'low', 'medium', or 'high'. Default: 'medium'. Lower levels are faster but may produce less accurate results.")
 
 @toolify_agent(
     name="code_gen",

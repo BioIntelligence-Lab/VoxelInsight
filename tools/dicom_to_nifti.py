@@ -1,4 +1,3 @@
-# tools/dicom_to_nifti.py
 import os
 import tempfile
 from pathlib import Path

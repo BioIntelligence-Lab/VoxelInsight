@@ -1,0 +1,70 @@
+Every LLM-backed tool MUST follow this contract so the supervisor and UI can
+render results consistently. Treat the following rules as mandatory unless a
+tool-specific prompt explicitly overrides an item.
+
+1. Single return variable
+   - Always assign the final payload to `res_query`.
+   - Do not print or return anything else. The surrounding harness captures only
+     `res_query` from your code block.
+
+2. Permitted payload types
+   - `str` / `None`: plain text response. Keep it concise and user ready.
+   - `pandas.DataFrame`: only when a modest preview is acceptable. The supervisor
+     will automatically capture the first 50 rows. (For large dataframes, save data as a csv file and output that via download action detailed below)
+   - `matplotlib.figure.Figure`: create with `fig, ax = plt.subplots(...)` and
+     assign `res_query = fig`. Do not call `plt.show()` or `plt.close()`.
+   - `plotly.graph_objects.Figure`: assign the figure directly. The UI saves it
+     to JSON for display.
+   - Binary / file-like buffer (`io.BytesIO`, open file handle): seek to 0 before
+     returning when possible; the UI writes it to disk for download.
+   - `dict`: structured payloads (described below). All dict values must be
+     JSON-serializable or one of the types above.
+
+3. Structured dictionaries
+   Use dictionaries for richer outputs. Supported keys:
+   - `"text"`: str message to show.
+   - `"figure"`: matplotlib Figure to render (mainly for agents that need extra
+     metadata). Avoid when a bare Figure suffices.
+   - `"action": "download"` plus:
+       * `"download_dir"`: directory path containing files.
+       * `"files"`: list of files or directories (strings) to expose.
+       * Optional metadata such as `"series_uids"` or `"notes"`.
+   - `"action": "table_download"` plus:
+       * `"download_dir"`: directory path.
+       * `"file"`: CSV/Parquet path.
+       * `"rows"`: int row count.
+       * `"columns"`: list of column names.
+       * Optional pagination / filter info.
+   - `"table_preview"` or custom keys pointing to small DataFrames. Large tables
+     must go through `"table_download"`.
+   - `"plots"` / other keys pointing to Figures or Plotly figures. Each item is
+     processed with the same rules as standalone returns.
+
+4. Large tables
+   - When the in-memory result has ≥ 50 rows or the full dataset is required
+     later, write it to disk and return the `"action": "table_download"` dict.
+   - Also include high-level stats (row count, selected columns) inside the dict
+     so the supervisor can describe the file without opening it.
+
+5. Matplotlib vs Plotly
+   - Matplotlib is auto-converted to PNG; use it for static plots.
+   - Plotly is saved as JSON; use it for interactive charts or sliders.
+   - Do not mix plotting libraries in the same figure payload.
+
+6. File generation
+   - Create directories with `tempfile.mkdtemp(...)`
+   - Ensure paths exist before referencing them in `"files"`.
+   - When returning downloadable artifacts, prefer directories containing all
+     relevant outputs instead of enumerating dozens of files individually.
+
+8. Consistency notes
+   - Never emit prose outside the Python code block; the supervisor only sees
+     `res_query`.
+   - Keep instructions concise inside each tool; this contract covers formatting.
+   - Memory propagation happens through `artifacts` (e.g., `"segmentations"`,
+     `"files"`). If you create such data, ensure the surrounding tool populates
+     `TaskResult.artifacts` accordingly.
+
+Following these rules ensures every agent speaks a consistent “output
+language,” making it easy for the supervising router and UI to present results
+without guesswork.

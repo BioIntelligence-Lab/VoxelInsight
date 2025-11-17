@@ -1,6 +1,5 @@
 import os, io, pandas as pd, matplotlib.pyplot as plt
 import duckdb
-from openai import AsyncOpenAI
 
 from core.state import Task, TaskResult, ConversationState
 from core.utils import extract_code_block
@@ -8,34 +7,44 @@ from core.sandbox import run_user_code
 from pydantic import BaseModel, Field
 from typing import Optional
 from tools.shared import toolify_agent, _cs
+from core.llm_provider import choose_llm
+
+CRED_PATH = os.getenv("MIDRC_CRED", "~/midrc_credentials.json")
 
 class MIDRCQueryAgent:
     name = "midrc_query"
     model = "gpt-5"
 
     def __init__(self, df_MIDRC: pd.DataFrame, system_prompt: str):
-        key = os.getenv("OPENAI_API_KEY")
-        self.client = AsyncOpenAI(api_key=key)
         self.df_MIDRC = df_MIDRC
         self.system_prompt = system_prompt
+        try:
+            self.llm = choose_llm()
+        except Exception:
+            self.llm = None
 
-    async def run(self, task: Task, state: ConversationState) -> TaskResult:
+    async def run(self, task: Task, state: ConversationState, reasoning_effort: str = "medium") -> TaskResult:
         user_text = task.kwargs.get("instructions") or task.user_msg
+        if self.df_MIDRC.empty:
+            data_context = "df_MIDRC is not available. Use Gen3 for this task. MIDRC credentials can be accesssed via the local 'cred' variable."
+        else:
+            data_context = (
+                f"=== df_MIDRC Columns ===\n{self.df_MIDRC.columns.tolist()}=== df_MIDRC Example Columns ===\n"
+                f"{self.df_MIDRC.head(3).to_dict(orient='records')}"
+            )
         messages = [
             {"role": "system", "content": self.system_prompt},
             {
                 "role": "user",
-                "content": f"{user_text}\n\n=== df_MIDRC Columns ===\n{self.df_MIDRC.columns.tolist()}=== df_MIDRC Example Columns ===\n{self.df_MIDRC.head(3).to_dict(orient='records')}",
+                "content": f"{user_text}\n\n{data_context}",
             },
         ]
-        comp = await self.client.chat.completions.create(
-            model=self.model,
-            temperature=1,
-            messages=messages,
-        )
-        code = extract_code_block(comp.choices[0].message.content)
+        if self.llm is None:
+            raise RuntimeError("LLM provider is not configured.")
+        content = await self.llm.ainvoke(messages, temperature=1, reasoning_effort=reasoning_effort)
+        code = extract_code_block(content)
         print(code)
-        local_env = {"df_MIDRC": self.df_MIDRC, "cred": "/Users/adhrith/Downloads/midrc_credentials.json", "pd": pd, "plt": plt, "io": io, "os": os, "duckdb": duckdb}
+        local_env = {"df_MIDRC": self.df_MIDRC, "cred": CRED_PATH, "pd": pd, "plt": plt, "io": io, "os": os, "duckdb": duckdb}
         out = run_user_code(code, local_env)
         res = out.get("res_query")
 
@@ -55,6 +64,7 @@ def configure_midrc_query_tool(*, df_MIDRC: pd.DataFrame, system_prompt: str):
 
 class MIDRCQueryArgs(BaseModel):
     query: str = Field(..., description="Natural language query for the MIDRC table.")
+    reasoning_effort: str = Field(..., description="Reasoning effort level (select based on task complexity): 'low', 'medium'. Lower levels are faster but may produce less accurate results.")
 
 @toolify_agent(
     name="midrc_query",
@@ -68,8 +78,8 @@ class MIDRCQueryArgs(BaseModel):
     args_schema=MIDRCQueryArgs,
     timeout_s=120,
 )
-async def midrc_query_runner(query: str):
+async def midrc_query_runner(query: str, reasoning_effort: str = "medium"):
     if _DQ is None:
         raise RuntimeError("MIDRCQuery tool is not configured. Call configure_midrc_query_tool at startup.")
     task = Task(user_msg=query, files=[], kwargs={})
-    return await _DQ.run(task, _cs())
+    return await _DQ.run(task, _cs(), reasoning_effort=reasoning_effort)

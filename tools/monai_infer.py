@@ -5,7 +5,6 @@ from typing import Optional, Dict, Any, List, Literal
 import numpy as np
 import torch
 import nibabel as nib
-from openai import AsyncOpenAI
 from typing import List, Union, Optional
 from pydantic import BaseModel, Field
 from pathlib import Path
@@ -18,6 +17,7 @@ from monai.utils import convert_to_tensor
 from core.utils import extract_code_block
 from core.sandbox import run_user_code
 from core.state import TaskResult  
+from core.llm_provider import choose_llm
 from tools.shared import toolify_agent 
 
 def run_monai_bundle(
@@ -87,9 +87,12 @@ class MONAIAgent:
     model = "gpt-5"  
 
     def __init__(self, system_prompt: str, additional_context: str):
-        self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.system_prompt = system_prompt
         self.additional_context = additional_context
+        try:
+            self.llm = choose_llm()
+        except Exception:
+            self.llm = None
 
     async def run(
         self,
@@ -146,12 +149,10 @@ class MONAIAgent:
             },
         ]
 
-        comp = await self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            reasoning_effort = "low",
-        )
-        code = extract_code_block(comp.choices[0].message.content)
+        if self.llm is None:
+            raise RuntimeError("LLM provider is not configured.")
+        content = await self.llm.ainvoke(messages, temperature=1, reasoning_effort="medium")
+        code = extract_code_block(content)
 
         print("MONAI AGENT GENERATED CODE:\n", code)
 
