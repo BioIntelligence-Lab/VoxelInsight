@@ -57,7 +57,7 @@ def configure_idc_query_tool(*, df_IDC: pd.DataFrame, df_BIH: pd.DataFrame, syst
 
 class DataQueryArgs(BaseModel):
     instructions: str = Field(..., description="Natural language for the IDC tables.")
-    reasoning_effort: str = Field(..., description="Reasoning effort level (select based on task complexity): 'minimal','low', 'medium'. Lower levels are faster (and preferred for most cases)but may produce less accurate results. When a result isn't satisfoctory, try increasing the reasoning effort to 'medium'.")
+    reasoning_effort: str = Field(..., description="Reasoning effort level (select based on task complexity): 'minimal', 'low', 'medium'. Lower levels are faster (and preferred for most cases)but may produce less accurate results. When a result isn't satisfoctory, try increasing the reasoning effort to 'medium'.")
 
 @toolify_agent(
     name="idc_query",
