@@ -13,7 +13,7 @@ CRED_PATH = os.getenv("MIDRC_CRED", "~/midrc_credentials.json")
 
 class MIDRCQueryAgent:
     name = "midrc_query"
-    model = "gpt-5"
+    model = "gpt-5-mini"
 
     def __init__(self, df_MIDRC: pd.DataFrame, system_prompt: str):
         self.df_MIDRC = df_MIDRC
@@ -64,7 +64,7 @@ def configure_midrc_query_tool(*, df_MIDRC: pd.DataFrame, system_prompt: str):
 
 class MIDRCQueryArgs(BaseModel):
     query: str = Field(..., description="Natural language query for the MIDRC table.")
-    reasoning_effort: str = Field(..., description="Reasoning effort level (select based on task complexity): 'low', 'medium'. Lower levels are faster but may produce less accurate results.")
+    reasoning_effort: str = Field(..., description="Reasoning effort level (select based on task complexity): 'minimal', 'low', 'medium'. Lower levels are faster but may produce less accurate results.")
 
 @toolify_agent(
     name="midrc_query",
