@@ -49,7 +49,7 @@ import tools.tcia_download as tcia_dl_mod
 import tools.idc_download as idc_dl_mod
 from tools.shared import TOOL_REGISTRY
 
-'''
+
 @cl.oauth_callback
 def oauth_callback(
     provider_id: str,
@@ -58,7 +58,7 @@ def oauth_callback(
     default_user: cl.User,
 ) -> Optional[cl.User]:
     return default_user
-'''
+
 
 load_dotenv()
 
