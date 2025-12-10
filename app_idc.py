@@ -37,6 +37,9 @@ from idc_index import index
 import tools.idc_query as dq_mod
 import tools.dicom_to_nifti as d2n_mod
 import tools.idc_download as idc_dl_mod
+import tools.idc_web_qa as webqa_mod
+import tools.pathology_download as path_mod
+import tools.clinical_data as clin_mod
 from tools.shared import TOOL_REGISTRY
 
 '''
@@ -68,20 +71,34 @@ dq_mod.configure_idc_query_tool(
     system_prompt=(_P("prompts/agent_systems/idc_query.txt").read_text()),
 )
 idc_dl_mod.configure_idc_download_tool()
+clin_mod.configure_clinical_data_tool()
+webqa_mod.configure_idc_web_qa_tool()
+path_mod.configure_pathology_download_tool()
 
 _ = dq_mod.idc_query_runner
 _ = d2n_mod.dicom2nifti_runner
 _ = idc_dl_mod.idc_download_runner
+_ = webqa_mod.idc_web_qa_runner
+_ = clin_mod.clinical_data_download_runner
+_ = path_mod.pathology_download_runner
 
 ALL_TOOLS: tuple[BaseTool, ...] = tuple(TOOL_REGISTRY)
 
 def build_graph(checkpointer=None):
     policy = SystemMessage(content=(
         f"""
-        You are **VoxelInsight IDC**, an AI assistant focused on IDC metadata, series downloads, and DICOM→NIfTI conversion.
+        You are **VoxelInsight IDC**, a multi-agent assistant for IDC: metadata Q&A, web-grounded answers, radiology downloads,
+        histopathology tiles via DICOMweb, clinical data exports (idc_index), and DICOM→NIfTI conversion.
 
         Core behavior
         - Only answer what the user asked; request clarifications solely when required to complete a tool call.
+        - Only when asked about VoxelInsight, answer yourself otherwise always use tools. YOU ARE NOT ALLOWED TO ANSWER DIRECTLY.
+        - When the user asks questions about IDC documentation, use the `idc_web_qa` tool to answer them based. These are questions like "What is the purpose of IDC?", "How to access IDC data?", "What collections are available in IDC?", etc.
+        - Primarily if the user's question is a How to or what is, use the `idc_web_qa` tool to answer them based on IDC documentation.
+        - When the user asks for IDC data (metadata, images, clinical data), use the idc_query tool. These include questions like "How many patients are in IDC?", "List all SeriesInstanceUIDs for CT scans in collection X", "Show me a summary of the IDC metadata tables", etc.
+        - When the user requests downloads of DICOM series, histopathology tiles, or clinical data, use the respective download tools (`idc_download`, `pathology_download`, `clinical_data_download`).
+        - For downloading DICOM Series or histopathology tiles, always download one patient at a time. If the user requests multiple patients, call the download tool multiple times, once per patient.
+        - When the user requests DICOM to NIfTI conversion, use the `
         - Tools cannot see each other’s outputs—pass important values (SeriesInstanceUIDs, directories, etc.) yourself.
         - Keep tool instructions brief unless retrying an error. Retry at most 3 times (when it seems reasonable/necessary) with progressively clearer directions.
         - Before each tool call, tell the user what you are about to do in one concise sentence.
@@ -94,7 +111,10 @@ def build_graph(checkpointer=None):
             - For instance do not ask the tool for notes which you could have surmised. You will receive the tools code output and code itself so you can interpret it directly.
             - Aim to get the result in as few tool calls as possible. Do not split into multiple calls unless absolutely necessary.
             - If the user wants to view or visualize the radiology imaging data without downloading, the idc_query tool can provide links to online viewers.
+        - `idc_web_qa`: answer general IDC questions grounded in learn.canceridc.dev (or a provided IDC doc URL). Use when the user asks doc questions.
         - `idc_download`: download DICOM series by UID. Use exactly the IDs produced by `idc_query` and respect user cancellations.
+        - `pathology_download`: download histopathology tiles via DICOMweb. Default size 512x512; honor user-specified size. Needs study/series/sop instance UIDs.
+        - `clinical_data_download`: download IDC clinical data by collection using idc_index (no BigQuery). Optionally select fields and/or filter on a field value.
         - `dicom2nifti`: convert downloaded DICOM folders to NIfTI files. Only run it after confirming the directory exists.
             - Automatically returns downloaded NIfTI files as download links in the UI.
 
@@ -289,6 +309,9 @@ class VoxelInsightHandler(BaseCallbackHandler):
             "midrc_download": "MIDRC Download Tool",
             "tcia_download": "TCIA Download Tool",
             "universeg": "Universeg Segmentation",
+            "idc_web_qa": "IDC Web Q&A",
+            "pathology_download": "Histopathology Download",
+            "clinical_data_download": "Clinical Data Download",
         }
 
     async def _rename_root(self, name: str):

@@ -47,6 +47,7 @@ import tools.midrc_download as midrc_dl_mod
 import tools.bih_query as bih_mod
 import tools.tcia_download as tcia_dl_mod
 import tools.idc_download as idc_dl_mod
+import tools.clinical_data as clin_mod
 from tools.shared import TOOL_REGISTRY
 
 
@@ -108,6 +109,7 @@ bih_mod.configure_bih_query_tool(
 midrc_dl_mod.configure_midrc_download_tool()
 tcia_dl_mod.configure_tcia_download_tool()
 idc_dl_mod.configure_idc_download_tool()
+clin_mod.configure_clinical_data_tool()
 
 _ = dq_mod.idc_query_runner
 _ = img_mod.imaging_runner
@@ -120,6 +122,7 @@ _ = bih_mod.bih_query_runner
 _ = midrc_dl_mod.midrc_download_runner
 _ = tcia_dl_mod.tcia_download_runner
 _ = idc_dl_mod.idc_download_runner
+_ = clin_mod.clinical_data_download_runner
 
 ALL_TOOLS: tuple[BaseTool, ...] = tuple(TOOL_REGISTRY)
 TOOL_NAMES = {tool.name: tool for tool in ALL_TOOLS}
@@ -144,6 +147,7 @@ def build_graph(checkpointer=None):
         - Do not ask the user follow up questions unless absolutely necessary. 
         - Do not do more than what the user requests.
         - Do not suggest next steps for the user unless they ask for them.
+        - For downloading DICOM Series or histopathology tiles, always download one patient at a time. If the user requests multiple patients, call the download tool multiple times, once per patient.
         - When using llm based tools which generate code, be as concise as possible in your instructions, unless an error occurs, then be as specific as possible to fix the issue.
         - Assume that tools cannot see each other's output or the conversation history. You must pass information between tools yourself.
         ---
