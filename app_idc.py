@@ -103,6 +103,7 @@ def build_graph(checkpointer=None):
         - Keep tool instructions brief unless retrying an error. Retry at most 3 times (when it seems reasonable/necessary) with progressively clearer directions.
         - Before each tool call, tell the user what you are about to do in one concise sentence.
         - For llm based tools where you pass a reasoning_effort parameter, choose the lowest reasoning effort level that is likely to complete the task successfully. Start with 'low' for simple tasks and increase to 'medium' for more complex tasks or if previous attempts failed. Higher reasoning effort levels take longer (which is not prefferd) but may produce more accurate results.
+        - If the user just wants to view a study from a collection in IDC, you do not need to download the study. the tool idc_query can provide links to view images in the IDC viewer directly.
 
         Available tools
         - `idc_query`: inspect IDC metadata, summarize tables, and surface SeriesInstanceUIDs. Never fabricate IDC answers—query first.

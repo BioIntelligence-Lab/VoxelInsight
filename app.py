@@ -49,6 +49,7 @@ import tools.tcia_download as tcia_dl_mod
 import tools.idc_download as idc_dl_mod
 import tools.clinical_data as clin_mod
 import tools.image_registration as ir_mod
+import tools.merlin_3d as merlin3d_mod
 from tools.shared import TOOL_REGISTRY
 
 
@@ -86,6 +87,14 @@ if "imaging" in os.getenv("VOXELINSIGHT_TOOLS", ""):
     TS_MRI = pd.read_csv("Data/TotalSegmentatorMappingsMRI.tsv", sep="\t")
 if "monai" in os.getenv("VOXELINSIGHT_TOOLS", ""):
     Monai_Instructions = _P("Data/monai_bundles_instructions.txt").read_text()
+
+
+merlin3d_mod.configure_merlin_tool(
+        device=None,          # auto: cuda if available, else cpu
+        cache_root=None,      # or set to a persistent dir if you want caching
+        merlin_kwargs=None,   # Merlin(ImageEmbedding=True) by default
+    )
+
 
 dq_mod.configure_idc_query_tool(df_IDC=df_IDC, df_BIH=df_BIH, system_prompt=(_P("prompts/agent_systems/idc_query.txt").read_text()))
 img_mod.configure_imaging_tool(ct_mappings="")
@@ -126,6 +135,8 @@ _ = tcia_dl_mod.tcia_download_runner
 _ = idc_dl_mod.idc_download_runner
 _ = clin_mod.clinical_data_download_runner
 _ = ir_mod.image_registration_runner
+_ = merlin3d_mod.merlin_3d_runner
+
 
 ALL_TOOLS: tuple[BaseTool, ...] = tuple(TOOL_REGISTRY)
 TOOL_NAMES = {tool.name: tool for tool in ALL_TOOLS}
@@ -153,6 +164,7 @@ def build_graph(checkpointer=None):
         - For downloading DICOM Series or histopathology tiles, always download one patient at a time. If the user requests multiple patients, call the download tool multiple times, once per patient.
         - When using llm based tools which generate code, be as concise as possible in your instructions, unless an error occurs, then be as specific as possible to fix the issue.
         - Assume that tools cannot see each other's output or the conversation history. You must pass information between tools yourself.
+        - If the user just wants to view a study from a collection in IDC, you do not need to download the study. the tool idc_query can provide links to view images in the IDC viewer directly.
         ---
 
         ## General Principles
@@ -217,6 +229,11 @@ def build_graph(checkpointer=None):
         - Always ensure that you have the correct collection name before using this tool.
         - If idc_query returns no results for a collection, inform the user that you cannot complete the task.
         - If multiple collections are found from idc_query, ask the user to clarify which one they want before proceeding.
+
+        ### Merlin 3D Embedding (`merlin_3d`)
+        - Computes 3D CT embeddings using the Merlin vision-language foundation model in ImageEmbedding mode. 
+        - Accepts single or multiple NIfTI volumes (.nii/.nii.gz).
+        - Outputs a CSV file with one row per input volume: filename and merlin_* feature columns.
 
         ## Post-Tool Result Handling
         - Tool results arrive as JSON in a ToolMessage with schema:  
