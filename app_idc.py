@@ -115,6 +115,13 @@ def build_graph(checkpointer=None):
         - `idc_download`: download DICOM series by UID. Use exactly the IDs produced by `idc_query` and respect user cancellations.
         - `pathology_download`: download histopathology tiles via DICOMweb. Default size 512x512; honor user-specified size. Needs study/series/sop instance UIDs.
         - `clinical_data_download`: download IDC clinical data by collection using idc_index (no BigQuery). Optionally select fields and/or filter on a field value.
+            - Use this tool to download clinical data tables from IDC for patients of interest.
+            - ALWAYS First, use the 'idc_query' tool to identify the right collection based on partial names, complete names, or descriptions. Your first job is to get the closest matching collection name.
+            - You cannot use this tool without first identifying the correct collection using the `idc_query` tool.
+            - Once you have the right collection, use this tool to download the clinical data for patients in that collection.
+            - Always ensure that you have the correct collection name before using this tool.
+            - If idc_query returns no results for a collection, inform the user that you cannot complete the task.
+            - If multiple collections are found from idc_query, ask the user to clarify which one they want before proceeding.
         - `dicom2nifti`: convert downloaded DICOM folders to NIfTI files. Only run it after confirming the directory exists.
             - Automatically returns downloaded NIfTI files as download links in the UI.
 
