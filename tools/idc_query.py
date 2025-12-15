@@ -1,4 +1,5 @@
 import os, io, pandas as pd, matplotlib.pyplot as plt
+import chainlit as cl
 from core.state import Task, TaskResult, ConversationState
 from core.utils import extract_code_block
 from core.sandbox import run_user_code
@@ -31,7 +32,6 @@ class DataQueryAgent:
         content = await self.llm.ainvoke(messages, temperature=1, reasoning_effort=reasoning_effort)
         code = extract_code_block(content)
         print(code)
-        print(f"Running user code:\n{code}\n")
         local_env = {"df_IDC": self.df_IDC, "df_BIH": self.df_BIH, "pd": pd, "plt": plt, "io": io, "os": os,}
         out = run_user_code(code, local_env)
         res = out.get("res_query")

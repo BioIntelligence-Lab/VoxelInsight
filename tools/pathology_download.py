@@ -1,42 +1,32 @@
 from __future__ import annotations
 
+import asyncio
+import tempfile
 from pathlib import Path
 from typing import Optional
 
-import httpx
+from dicomweb_client.api import DICOMwebClient
+import wsidicom
 from pydantic import BaseModel, Field
 
 from core.state import Task, TaskResult, ConversationState
 from tools.shared import toolify_agent, _cs
 
-# Default IDC WADO-RS endpoint
-DEFAULT_ENDPOINT = "https://portal.imaging.datacommons.cancer.gov/dcm4chee-arc/aets/DCM4CHEE/rs"
+DEFAULT_IDC_STORE = "https://proxy.imaging.datacommons.cancer.gov/current/viewer-only-no-downloads-see-tinyurl-dot-com-slash-3j3d9jyp/dicomWeb"
 OUTDIR = "pathology_downloads"
 
 
-# ============================================================
-# Args schema (for toolify_agent + LLM)
-# ============================================================
-
 class PathologyDownloadArgs(BaseModel):
-    dicomweb_endpoint: str = Field(
-        DEFAULT_ENDPOINT,
-        description="DICOMweb endpoint (WADO-RS). Defaults to IDC public endpoint.",
-    )
+    dicom_store_url: str = Field(DEFAULT_IDC_STORE, description="DICOMweb base URL for the store.")
     study_instance_uid: str = Field(..., description="StudyInstanceUID for the slide.")
     series_instance_uid: str = Field(..., description="SeriesInstanceUID for the slide.")
-    sop_instance_uid: str = Field(..., description="SOPInstanceUID for the desired instance/frame.")
-    frame_number: int = Field(1, description="Frame number to retrieve.")
-    size: int = Field(
-        512,
-        description="Tile size (pixels). Default 512. If user specifies another size, use that.",
-    )
-    image_type: str = Field("jpeg", description="Image format to request (e.g., jpeg).")
+    level: int = Field(0, ge=0, description="Resolution level index (0 is highest resolution).")
+    x: int = Field(0, ge=0, description="Top-left x pixel coordinate.")
+    y: int = Field(0, ge=0, description="Top-left y pixel coordinate.")
+    width: int = Field(512, ge=1, description="Region width in pixels.")
+    height: int = Field(512, ge=1, description="Region height in pixels.")
+    image_type: str = Field("PNG", description="Image format to save (PNG or JPEG).")
 
-
-# ============================================================
-# Agent implementation (mirrors IDCDownloadAgent style)
-# ============================================================
 
 class PathologyDownloadAgent:
     name = "pathology_download"
@@ -44,72 +34,56 @@ class PathologyDownloadAgent:
 
     async def run(self, task: Task, state: ConversationState) -> TaskResult:
         kw = task.kwargs or {}
-
-        dicomweb_endpoint: str = kw.get("dicomweb_endpoint", DEFAULT_ENDPOINT)
+        dicom_store_url: str = kw.get("dicom_store_url", DEFAULT_IDC_STORE)
         study_instance_uid: str = kw.get("study_instance_uid")
         series_instance_uid: str = kw.get("series_instance_uid")
-        sop_instance_uid: str = kw.get("sop_instance_uid")
-        frame_number: int = int(kw.get("frame_number", 1))
-        size: int = int(kw.get("size", 512))
-        image_type: str = kw.get("image_type", "jpeg")
+        level: int = int(kw.get("level", 0))
+        x: int = int(kw.get("x", 0))
+        y: int = int(kw.get("y", 0))
+        width: int = int(kw.get("width", 512))
+        height: int = int(kw.get("height", 512))
+        image_type: str = kw.get("image_type", "PNG") or "PNG"
 
-        if not (study_instance_uid and series_instance_uid and sop_instance_uid):
-            return TaskResult(
-                output="Missing required UIDs: study_instance_uid, series_instance_uid, sop_instance_uid.",
-                artifacts={},
-            )
-
-        base = dicomweb_endpoint.rstrip("/")
-        url = (
-            f"{base}/studies/{study_instance_uid}"
-            f"/series/{series_instance_uid}"
-            f"/instances/{sop_instance_uid}"
-            f"/frames/{frame_number}"
-        )
-        params = {
-            "contentType": f"image/{image_type}",
-            "size": size,
-        }
+        if not (study_instance_uid and series_instance_uid):
+            return TaskResult(output="Missing required UIDs: study_instance_uid and series_instance_uid.", artifacts={})
+        if width < 1 or height < 1:
+            return TaskResult(output="Width and height must be positive.", artifacts={})
+        if level < 0:
+            return TaskResult(output="Level must be non-negative.", artifacts={})
 
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.get(url, params=params)
-                resp.raise_for_status()
-                content = resp.content
-                content_type = resp.headers.get("content-type", "")
-        except Exception as e:
-            return TaskResult(
-                output=f"PathologyDownload error while fetching from WADO-RS: {e}",
-                artifacts={},
+            img_bytes, fmt = await asyncio.to_thread(
+                self._fetch_region,
+                dicom_store_url,
+                study_instance_uid,
+                series_instance_uid,
+                level,
+                x,
+                y,
+                width,
+                height,
+                image_type,
             )
+        except Exception as e:
+            return TaskResult(output=f"PathologyDownload error: {e}", artifacts={})
 
-        # Determine file extension
-        if "jpeg" in content_type:
-            ext = "jpg"
-        elif "png" in content_type:
-            ext = "png"
-        else:
-            ext = image_type
-
-        # Output directory (persistent, similar to idc_downloads)
         out_root = Path(OUTDIR).expanduser().resolve()
         out_root.mkdir(parents=True, exist_ok=True)
-
         fname = (
             f"study_{study_instance_uid}_"
             f"series_{series_instance_uid}_"
-            f"frame{frame_number}_{size}px.{ext}"
+            f"level{level}_x{x}_y{y}_{width}x{height}.{fmt.lower()}"
         )
         out_path = out_root / fname
-        out_path.write_bytes(content)
+        out_path.write_bytes(img_bytes)
 
         summary = (
-            f"Downloaded histopathology tile from WADO-RS.\n"
+            f"Downloaded pathology region from DICOMweb store.\n"
+            f"- Store: {dicom_store_url}\n"
             f"- StudyInstanceUID: {study_instance_uid}\n"
             f"- SeriesInstanceUID: {series_instance_uid}\n"
-            f"- SOPInstanceUID: {sop_instance_uid}\n"
-            f"- Frame: {frame_number}\n"
-            f"- Size: {size}px\n"
+            f"- Level: {level}\n"
+            f"- Region: ({x}, {y}) size {width}x{height}\n"
             f"- Saved to: {out_path}"
         )
 
@@ -119,25 +93,65 @@ class PathologyDownloadAgent:
                 "tool": self.name,
                 "study_instance_uid": study_instance_uid,
                 "series_instance_uid": series_instance_uid,
-                "sop_instance_uid": sop_instance_uid,
-                "frame_number": frame_number,
-                "size": size,
-                "image_type": image_type,
+                "level": level,
+                "x": x,
+                "y": y,
+                "width": width,
+                "height": height,
+                "image_type": fmt,
                 "files": [str(out_path)],
             },
             artifacts={"files": [str(out_path)], "output_dir": str(out_root)},
         )
 
+    def _fetch_region(
+        self,
+        dicom_store_url: str,
+        study_instance_uid: str,
+        series_instance_uid: str,
+        level: int,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        image_type: str,
+    ):
+        dw_client = DICOMwebClient(url=dicom_store_url)
+        wsidc_client = wsidicom.WsiDicomWebClient(dw_client)
+        slide = wsidicom.WsiDicom.open_web(wsidc_client, study_uid=study_instance_uid, series_uids=series_instance_uid)
+        levels = list(slide.levels)
+        level_obj = None
+        level_value = level
+        for lv in levels:
+            lv_id = getattr(lv, "level", getattr(lv, "level_index", None))
+            if lv_id == level:
+                level_obj = lv
+                level_value = lv_id
+                break
+        if level_obj is None and 0 <= level < len(levels):
+            level_obj = levels[level]
+            level_value = getattr(level_obj, "level", getattr(level_obj, "level_index", level))
+        if level_obj is None:
+            avail = [getattr(lv, "level", getattr(lv, "level_index", idx)) for idx, lv in enumerate(levels)]
+            raise ValueError(f"Requested level {level} not available; available levels: {avail}")
+        region = slide.read_region(location=(x, y), level=level_value, size=(width, height))
+        fmt = image_type.upper()
+        if fmt not in {"PNG", "JPEG", "JPG"}:
+            fmt = "PNG"
+        if fmt == "JPG":
+            fmt = "JPEG"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{fmt.lower()}") as tmp:
+            tmp_path = Path(tmp.name)
+            region.save(tmp_path, format=fmt)
+        data = tmp_path.read_bytes()
+        tmp_path.unlink(missing_ok=True)
+        return data, fmt
 
-# ============================================================
-# Config + tool wrapper (mirrors idc_download style)
-# ============================================================
 
 _PD: Optional[PathologyDownloadAgent] = None
 
 
 def configure_pathology_download_tool():
-    """Call this once at startup to configure the pathology download tool."""
     global _PD
     _PD = PathologyDownloadAgent()
 
@@ -145,36 +159,37 @@ def configure_pathology_download_tool():
 @toolify_agent(
     name="pathology_download",
     description=(
-        "Download histopathology imagery via DICOMweb WADO-RS. "
-        "Provide study/series/instance UIDs and desired frame/size. "
-        "Defaults to the IDC public endpoint and 512x512 tiles."
+        "Download a region from a histopathology whole-slide image via DICOMweb. "
+        "Provide study/series UIDs plus level and region coordinates. "
+        "Defaults to the IDC proxied DICOM store."
     ),
     args_schema=PathologyDownloadArgs,
-    timeout_s=120,
+    timeout_s=180,
 )
 async def pathology_download_runner(
-    dicomweb_endpoint: str = DEFAULT_ENDPOINT,
+    dicom_store_url: str = DEFAULT_IDC_STORE,
     study_instance_uid: str = "",
     series_instance_uid: str = "",
-    sop_instance_uid: str = "",
-    frame_number: int = 1,
-    size: int = 512,
-    image_type: str = "jpeg",
+    level: int = 0,
+    x: int = 0,
+    y: int = 0,
+    width: int = 512,
+    height: int = 512,
+    image_type: str = "PNG",
 ):
     if _PD is None:
-        raise RuntimeError(
-            "Pathology download tool not configured. "
-            "Call configure_pathology_download_tool() first."
-        )
+        raise RuntimeError("Pathology download tool not configured. Call configure_pathology_download_tool() first.")
 
     kwargs = {
-        "dicomweb_endpoint": dicomweb_endpoint,
+        "dicom_store_url": dicom_store_url,
         "study_instance_uid": study_instance_uid,
         "series_instance_uid": series_instance_uid,
-        "sop_instance_uid": sop_instance_uid,
-        "frame_number": frame_number,
-        "size": size,
+        "level": level,
+        "x": x,
+        "y": y,
+        "width": width,
+        "height": height,
         "image_type": image_type,
     }
-    task = Task(user_msg="Download pathology tile via WADO-RS", files=[], kwargs=kwargs)
+    task = Task(user_msg="Download pathology region via DICOMweb", files=[], kwargs=kwargs)
     return await _PD.run(task, _cs())

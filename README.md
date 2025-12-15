@@ -120,7 +120,7 @@ To initialize this database:
 docker compose up -d
 
 # Apply Prisma schema migrations (once per machine)
-chainlit datalayer migrate
+npx prisma migrate deploy
 ```
 On macOS, you may need to run Docker with Colima
 

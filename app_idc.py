@@ -215,6 +215,15 @@ async def _render_payload(payload: Dict[str, Any]):
     outputs = payload.get("outputs", {}) or {}
     ui = payload.get("ui", []) or []
 
+    code_text = outputs.get("code")
+    if code_text:
+        code_el = cl.CustomElement(
+            name="IdcCodeView",
+            props={"code": str(code_text), "title": "Generated code"},
+            display="inline",
+        )
+        await cl.Message(content="Generated code (expand to inspect):", elements=[code_el]).send()
+
     # UI items
     for item in ui:
         kind = item.get("kind")
