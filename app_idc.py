@@ -42,7 +42,6 @@ import tools.pathology_download as path_mod
 import tools.clinical_data as clin_mod
 from tools.shared import TOOL_REGISTRY
 
-'''
 @cl.oauth_callback
 def oauth_callback(
     provider_id: str,
@@ -51,9 +50,8 @@ def oauth_callback(
     default_user: cl.User,
 ) -> Optional[cl.User]:
     return default_user
-'''
 
-load_dotenv()
+load_dotenv(override=True)
 
 from pathlib import Path as _P
 

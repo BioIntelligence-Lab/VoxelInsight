@@ -1,5 +1,4 @@
 import os
-import tempfile
 from pathlib import Path
 from typing import List, Tuple, Dict, Optional
 
@@ -10,6 +9,7 @@ import torch.nn.functional as F
 from pydantic import BaseModel, Field
 
 from core.state import TaskResult 
+from core.storage import get_run_dir
 from tools.shared import toolify_agent
 
 ALLOWED_IMG_EXTS = (".nii", ".nii.gz")
@@ -141,7 +141,7 @@ class _UniversegCore:
             )
 
         # Output dir
-        out_root = output_dir or str(Path(tempfile.mkdtemp(prefix="vi_universeg_")) / f"run_{os.getpid()}")
+        out_root = output_dir or str(get_run_dir("universeg", persist=True))
         Path(out_root).mkdir(parents=True, exist_ok=True)
 
         # Build support tensors (B=1, S, 1, H, W)

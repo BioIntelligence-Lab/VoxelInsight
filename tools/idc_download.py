@@ -5,8 +5,8 @@ import contextlib
 import chainlit as cl
 
 from core.state import Task, TaskResult, ConversationState
+from core.storage import get_run_dir
 
-outdir = "idc_downloads"
 
 class IDCDownloadAgent:
     name  = "idc_download"
@@ -45,8 +45,7 @@ class IDCDownloadAgent:
             if not uids:
                 return TaskResult(output="Provide series_uid or series_uids.", artifacts={})
 
-            out_root = Path(outdir).expanduser().resolve()
-            out_root.mkdir(parents=True, exist_ok=True)
+            out_root = get_run_dir(self.name, persist=True)
 
             before = self._snapshot_files(out_root)
             logs: List[str] = []

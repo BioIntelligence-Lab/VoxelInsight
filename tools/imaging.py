@@ -1,7 +1,6 @@
 import os
 import shutil
 import pathlib
-import tempfile
 import subprocess
 import asyncio
 from typing import List, Dict, Tuple, Optional
@@ -9,6 +8,7 @@ from tools.shared import toolify_agent, normalize_task_result
 from progress_ui import update_progress
 
 from core.state import Task, TaskResult, ConversationState
+from core.storage import get_run_dir, get_temp_dir
 
 async def _run_ts_stream(cmd, on_progress):
     proc = await asyncio.create_subprocess_exec(
@@ -51,13 +51,13 @@ class ImagingAgent:
             state.memory["image_path"] = str(raw_path)
 
             if raw_path.suffix not in (".nii", ".gz"):
-                tmp_dir = pathlib.Path(tempfile.mkdtemp())
+                tmp_dir = get_temp_dir(prefix="imaging")
                 fixed_path = tmp_dir / (raw_path.name + ".nii.gz")
                 shutil.copy(raw_path, fixed_path)
             else:
                 fixed_path = raw_path
 
-            out_dir = tempfile.mkdtemp(prefix="ts_")
+            out_dir = str(get_run_dir(self.name, persist=True))
             task_name = str(task.kwargs.get("task_name", "total"))
 
             roi_subset = task.kwargs.get("roi_subset")
@@ -146,7 +146,7 @@ class ImagingAgent:
             fixed_paths: List[pathlib.Path] = []
             for p in input_paths:
                 if p.suffix not in (".nii", ".gz"):
-                    tmp_dir = pathlib.Path(tempfile.mkdtemp())
+                    tmp_dir = get_temp_dir(prefix="imaging")
                     fixed_path = tmp_dir / (p.name + ".nii.gz")
                     shutil.copy(p, fixed_path)
                     fixed_paths.append(fixed_path)
@@ -169,7 +169,7 @@ class ImagingAgent:
             seen = set()
             requested_rois = [r for r in requested_rois if not (r in seen or seen.add(r))]
 
-            out_root = tempfile.mkdtemp(prefix="ts_batch_")
+            out_root = str(get_run_dir(self.name, persist=True))
             per_input = []
             seg_map_batch: Dict[str, Dict[str, str]] = {}
             seg_paths_batch: Dict[str, List[str]] = {}

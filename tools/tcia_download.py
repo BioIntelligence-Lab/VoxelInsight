@@ -4,6 +4,7 @@ from pathlib import Path
 import chainlit as cl
 
 from core.state import Task, TaskResult, ConversationState
+from core.storage import get_run_dir
 from pydantic import BaseModel, Field
 from tools.shared import toolify_agent, _cs
 
@@ -11,8 +12,7 @@ BASE_V1 = "https://services.cancerimagingarchive.net/nbia-api/services/v1"
 FALLBACK_V3 = "https://services.cancerimagingarchive.net/services/v3/TCIA/query/getImage"
 
 def _ensure_outdir(root: Optional[str], make_subdir: bool, label: str = "tcia") -> Path:
-    base = Path(root) if root else Path(f"vi_{label}_{next(tempfile._get_candidate_names())}")
-    base = Path.cwd() / "tcia_downloads" / base
+    base = Path(root) if root else get_run_dir("tcia_download", persist=True)
     base.mkdir(parents=True, exist_ok=True)
     return base / f"{label}_downloads" if make_subdir else base
 

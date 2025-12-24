@@ -10,6 +10,7 @@ import wsidicom
 from pydantic import BaseModel, Field
 
 from core.state import Task, TaskResult, ConversationState
+from core.storage import get_run_dir
 from tools.shared import toolify_agent, _cs
 
 DEFAULT_IDC_STORE = "https://proxy.imaging.datacommons.cancer.gov/current/viewer-only-no-downloads-see-tinyurl-dot-com-slash-3j3d9jyp/dicomWeb"
@@ -67,8 +68,7 @@ class PathologyDownloadAgent:
         except Exception as e:
             return TaskResult(output=f"PathologyDownload error: {e}", artifacts={})
 
-        out_root = Path(OUTDIR).expanduser().resolve()
-        out_root.mkdir(parents=True, exist_ok=True)
+        out_root = get_run_dir(self.name, persist=True)
         fname = (
             f"study_{study_instance_uid}_"
             f"series_{series_instance_uid}_"

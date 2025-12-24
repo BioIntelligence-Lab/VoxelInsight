@@ -11,6 +11,7 @@ from core.sandbox import run_user_code
 from core.state import TaskResult 
 from core.llm_provider import choose_llm
 
+from core.storage import get_run_dir
 from tools.shared import toolify_agent  
 
 class RadiomicsAgent:
@@ -38,7 +39,7 @@ class RadiomicsAgent:
             return TaskResult(output="radiomics: 'image_path' is required.", artifacts={})
 
         mask_paths = mask_paths or []
-        out_dir = out_dir or tempfile.mkdtemp(prefix="vi_radiomics_")
+        out_dir = out_dir or str(get_run_dir(self.name, persist=True))
 
         runtime_ctx = {
             "ARGS": {

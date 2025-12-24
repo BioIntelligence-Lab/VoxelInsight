@@ -2,7 +2,6 @@
 
 import os
 import pathlib
-import tempfile
 import shutil
 from typing import List, Dict, Optional
 
@@ -15,6 +14,7 @@ from merlin import Merlin
 from merlin.data import DataLoader
 
 from core.state import Task, TaskResult, ConversationState
+from core.storage import get_run_dir, get_temp_dir
 from tools.shared import toolify_agent, _cs
 
 # -------------------------------------------------------------------
@@ -114,7 +114,7 @@ class MerlinEmbeddingAgent:
         - Merlin's DataLoader expects NIfTI; we let Merlin handle loading/preprocessing.
         """
         if p.suffix not in (".nii", ".gz"):
-            tmp_dir = pathlib.Path(tempfile.mkdtemp())
+            tmp_dir = get_temp_dir(prefix="merlin_3d")
             fixed = tmp_dir / (p.name + ".nii.gz")
             shutil.copy(p, fixed)
             return fixed
@@ -206,7 +206,7 @@ class MerlinEmbeddingAgent:
         state.memory["merlin_input_volumes"] = [str(p) for p in fixed_paths]
 
         # Output root for this run
-        out_root = pathlib.Path(tempfile.mkdtemp(prefix="merlin_3d_"))
+        out_root = get_run_dir(self.name, persist=True)
         rows: List[Dict[str, float]] = []
 
         # Compute embeddings and build rows for CSV

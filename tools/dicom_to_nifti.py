@@ -1,5 +1,4 @@
 import os
-import tempfile
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -8,6 +7,7 @@ import dicom2nifti
 from pydantic import BaseModel, Field
 
 from core.state import TaskResult
+from core.storage import get_run_dir
 from tools.shared import toolify_agent 
 
 class Dicom2NiftiTool:
@@ -54,7 +54,7 @@ class Dicom2NiftiTool:
         if not root.is_dir():
             return TaskResult(output=f"dicom2nifti_py: path is not a directory: {root}", artifacts={})
 
-        out_base = Path(out_dir) if out_dir else Path(tempfile.mkdtemp(prefix="vi_dcm2nii_"))
+        out_base = Path(out_dir) if out_dir else get_run_dir(self.name, persist=True)
 
         # Try bulk directory conversion first
         try:

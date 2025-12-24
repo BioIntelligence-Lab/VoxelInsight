@@ -18,6 +18,7 @@ from core.utils import extract_code_block
 from core.sandbox import run_user_code
 from core.state import TaskResult  
 from core.llm_provider import choose_llm
+from core.storage import get_run_dir
 from tools.shared import toolify_agent 
 
 def run_monai_bundle(
@@ -122,7 +123,7 @@ class MONAIAgent:
                 images[str(path)] = {"error": "Not a recognized segmentation file"}
 
 
-        out_dir = out_dir or tempfile.mkdtemp(prefix="vi_monai_")
+        out_dir = str(out_dir or get_run_dir(self.name, persist=True))
 
         runtime_ctx = {
             "ARGS": {
