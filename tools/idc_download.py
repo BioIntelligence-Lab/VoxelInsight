@@ -127,7 +127,12 @@ class IDCDownloadArgs(BaseModel):
 
 @toolify_agent(
     name="idc_download",
-    description="Download IDC series via idc_index given one or many SeriesInstanceUIDs. Use this tool for all IDC downloads.",
+    description=(
+        "Download IDC series via idc_index given one or many SeriesInstanceUIDs. Use this tool for all IDC downloads."
+        "\nWhen the user requests downloads of DICOM series, histopathology tiles, or clinical data, use the respective download tools (`idc_download`, `pathology_download`, `clinical_data_download`)."
+        "\nFor downloading DICOM Series or histopathology tiles, always download one patient at a time. If the user requests multiple patients, call the download tool multiple times, once per patient."
+        "\n- `idc_download`: download DICOM series by UID. Use exactly the IDs produced by `idc_query` and respect user cancellations."
+    ),
     args_schema=IDCDownloadArgs,
     timeout_s=3600,
 )

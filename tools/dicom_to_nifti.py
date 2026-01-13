@@ -121,6 +121,9 @@ class Dicom2NiftiArgs(BaseModel):
         "IDC studies follow the DICOM hierarchy: Patient → Study → Series → Instances."
         "A series contains multiple DICOM slices."
         "Use this tool to convert a DICOM directory (or nested series) into NIfTI (.nii.gz). Returns a downloadable file list automatically displayed in UI for users to download."
+        "\nWhen the user requests DICOM to NIfTI conversion, use the `"
+        "\n- `dicom2nifti`: convert downloaded DICOM folders to NIfTI files. Only run it after confirming the directory exists."
+        "\n- Automatically returns downloaded NIfTI files as download links in the UI."
     ),
     args_schema=Dicom2NiftiArgs,
     timeout_s=900, 

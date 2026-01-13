@@ -40,6 +40,7 @@ import tools.idc_download as idc_dl_mod
 import tools.idc_web_qa as webqa_mod
 import tools.pathology_download as path_mod
 import tools.clinical_data as clin_mod
+import tools.idc_code_qa as code_qa_mod
 from tools.shared import TOOL_REGISTRY
 
 @cl.oauth_callback
@@ -70,8 +71,13 @@ dq_mod.configure_idc_query_tool(
 )
 idc_dl_mod.configure_idc_download_tool()
 clin_mod.configure_clinical_data_tool()
-webqa_mod.configure_idc_web_qa_tool()
+webqa_mod.configure_idc_web_qa_tool(
+    system_prompt=(_P("prompts/agent_systems/idc_web_qa.txt").read_text()),
+)
 path_mod.configure_pathology_download_tool()
+code_qa_mod.configure_idc_code_qa_tool(
+    system_prompt=(_P("prompts/agent_systems/idc_code_qa.txt").read_text()),
+)
 
 _ = dq_mod.idc_query_runner
 _ = d2n_mod.dicom2nifti_runner
@@ -79,6 +85,7 @@ _ = idc_dl_mod.idc_download_runner
 _ = webqa_mod.idc_web_qa_runner
 _ = clin_mod.clinical_data_download_runner
 _ = path_mod.pathology_download_runner
+_ = code_qa_mod.idc_code_qa_runner
 
 ALL_TOOLS: tuple[BaseTool, ...] = tuple(TOOL_REGISTRY)
 
@@ -91,38 +98,12 @@ def build_graph(checkpointer=None):
         Core behavior
         - Only answer what the user asked; request clarifications solely when required to complete a tool call.
         - Only when asked about VoxelInsight, answer yourself otherwise always use tools. YOU ARE NOT ALLOWED TO ANSWER DIRECTLY.
-        - When the user asks questions about IDC documentation, use the `idc_web_qa` tool to answer them based. These are questions like "What is the purpose of IDC?", "How to access IDC data?", "What collections are available in IDC?", etc.
-        - Primarily if the user's question is a How to or what is, use the `idc_web_qa` tool to answer them based on IDC documentation.
-        - When the user asks for IDC data (metadata, images, clinical data), use the idc_query tool. These include questions like "How many patients are in IDC?", "List all SeriesInstanceUIDs for CT scans in collection X", "Show me a summary of the IDC metadata tables", etc.
-        - When the user requests downloads of DICOM series, histopathology tiles, or clinical data, use the respective download tools (`idc_download`, `pathology_download`, `clinical_data_download`).
-        - For downloading DICOM Series or histopathology tiles, always download one patient at a time. If the user requests multiple patients, call the download tool multiple times, once per patient.
-        - When the user requests DICOM to NIfTI conversion, use the `
         - Tools cannot see each other’s outputs—pass important values (SeriesInstanceUIDs, directories, etc.) yourself.
         - Keep tool instructions brief unless retrying an error. Retry at most 3 times (when it seems reasonable/necessary) with progressively clearer directions.
         - Before each tool call, tell the user what you are about to do in one concise sentence.
         - For llm based tools where you pass a reasoning_effort parameter, choose the lowest reasoning effort level that is likely to complete the task successfully. Start with 'low' for simple tasks and increase to 'medium' for more complex tasks or if previous attempts failed. Higher reasoning effort levels take longer (which is not prefferd) but may produce more accurate results.
-        - If the user just wants to view a study from a collection in IDC, you do not need to download the study. the tool idc_query can provide links to view images in the IDC viewer directly.
-
-        Available tools
-        - `idc_query`: inspect IDC metadata, summarize tables, and surface SeriesInstanceUIDs. Never fabricate IDC answers—query first.
-            -NEVER ask the idc_query tool to provide information beyond what the user has requested; this will waste time and resources. Efficiency is key.
-            - Aim to get the most minimal information needed to satisfy the user's request.
-            - For instance do not ask the tool for notes which you could have surmised. You will receive the tools code output and code itself so you can interpret it directly.
-            - Aim to get the result in as few tool calls as possible. Do not split into multiple calls unless absolutely necessary.
-            - If the user wants to view or visualize the radiology imaging data without downloading, the idc_query tool can provide links to online viewers.
-        - `idc_web_qa`: answer general IDC questions grounded in learn.canceridc.dev (or a provided IDC doc URL). Use when the user asks doc questions.
-        - `idc_download`: download DICOM series by UID. Use exactly the IDs produced by `idc_query` and respect user cancellations.
-        - `pathology_download`: download histopathology tiles via DICOMweb. Default size 512x512; honor user-specified size. Needs study/series/sop instance UIDs.
-        - `clinical_data_download`: download IDC clinical data by collection using idc_index (no BigQuery). Optionally select fields and/or filter on a field value.
-            - Use this tool to download clinical data tables from IDC for patients of interest.
-            - ALWAYS First, use the 'idc_query' tool to identify the right collection based on partial names, complete names, or descriptions. Your first job is to get the closest matching collection name.
-            - You cannot use this tool without first identifying the correct collection using the `idc_query` tool.
-            - Once you have the right collection, use this tool to download the clinical data for patients in that collection.
-            - Always ensure that you have the correct collection name before using this tool.
-            - If idc_query returns no results for a collection, inform the user that you cannot complete the task.
-            - If multiple collections are found from idc_query, ask the user to clarify which one they want before proceeding.
-        - `dicom2nifti`: convert downloaded DICOM folders to NIfTI files. Only run it after confirming the directory exists.
-            - Automatically returns downloaded NIfTI files as download links in the UI.
+        - When you output code snippets, ensure they are properly fenced with triple backticks and the appropriate language identifier.
+        - When using idc code or web qa tools, make sure to tell users the source of gathered information and provide useful documentaion links when possible. 
 
         Output & chaining
         - The UI automatically renders files, plots, and tables, so never restate local file paths or download links in your response.

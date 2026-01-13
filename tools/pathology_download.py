@@ -162,6 +162,10 @@ def configure_pathology_download_tool():
         "Download a region from a histopathology whole-slide image via DICOMweb. "
         "Provide study/series UIDs plus level and region coordinates. "
         "Defaults to the IDC proxied DICOM store."
+        "\nThis tool will download the specified region and save it as an image file (PNG or JPEG) and then provide a download link in the UI"
+        "\nWhen the user requests downloads of DICOM series, histopathology tiles, or clinical data, use the respective download tools (`idc_download`, `pathology_download`, `clinical_data_download`)."
+        "\nFor downloading DICOM Series or histopathology tiles, always download one patient at a time. If the user requests multiple patients, call the download tool multiple times, once per patient."
+        "\n- `pathology_download`: download histopathology tiles via DICOMweb. Default size 512x512; honor user-specified size. Needs study/series/sop instance UIDs."
     ),
     args_schema=PathologyDownloadArgs,
     timeout_s=180,

@@ -66,6 +66,14 @@ class DataQueryArgs(BaseModel):
         "Capabilities: return dataframes, summaries, plots, text, and download links (shown automatically)."
         "For IDC plots: request them directly from this tool (it can query + plot in one step)."
         "Matplotlib plots and file downloads (when files are downloaded directly from the IDC) will automatically be rendered in the chat UI. Other outputs will not automatically be shown in the chat UI." 
+        "\nWhen the user asks for IDC data (metadata, images, clinical data), use the idc_query tool. These include questions like \"How many patients are in IDC?\", \"List all SeriesInstanceUIDs for CT scans in collection X\", \"Show me a summary of the IDC metadata tables\", etc."
+        "\nIf the user just wants to view a study from a collection in IDC, you do not need to download the study. the tool idc_query can provide links to view images in the IDC viewer directly."
+        "\n- `idc_query`: inspect IDC metadata, summarize tables, and surface SeriesInstanceUIDs. Never fabricate IDC answers—query first."
+        "\n-NEVER ask the idc_query tool to provide information beyond what the user has requested; this will waste time and resources. Efficiency is key."
+        "\n- Aim to get the most minimal information needed to satisfy the user's request."
+        "\n- For instance do not ask the tool for notes which you could have surmised. You will receive the tools code output and code itself so you can interpret it directly."
+        "\n- Aim to get the result in as few tool calls as possible. Do not split into multiple calls unless absolutely necessary."
+        "\n- If the user wants to view or visualize the radiology imaging data without downloading, the idc_query tool can provide links to online viewers."
     ),
     args_schema=DataQueryArgs,
     timeout_s=600,
