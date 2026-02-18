@@ -21,6 +21,7 @@ import tools.clinical_data as clin_mod
 import tools.idc_web_qa as webqa_mod
 import tools.idc_code_qa as code_qa_mod
 import tools.dicom_to_nifti as d2n_mod
+import tools.orchestrator as orch_mod
 
 
 _CONFIGURED = False
@@ -118,8 +119,9 @@ mcp = FastMCP("VoxelInsight")
 @mcp.tool()
 async def idc_query(instructions: str, reasoning_effort: str = "medium") -> dict:
     _ensure_configured()
-    res = await dq_mod.idc_query_runner(instructions=instructions, reasoning_effort=reasoning_effort)
-    return normalize_task_result(res)
+    return await dq_mod.idc_query_runner.ainvoke(
+        {"instructions": instructions, "reasoning_effort": reasoning_effort}
+    )
 
 
 @mcp.tool()
@@ -131,12 +133,13 @@ async def idc_download(
 ) -> dict:
     _ensure_configured()
     if not skip_confirm:
-        res = await idc_dl_mod.idc_download_runner(
-            series_uid=series_uid,
-            series_uids=series_uids,
-            timeout_s=timeout_s,
+        return await idc_dl_mod.idc_download_runner.ainvoke(
+            {
+                "series_uid": series_uid,
+                "series_uids": series_uids,
+                "timeout_s": timeout_s,
+            }
         )
-        return normalize_task_result(res)
 
     res = await _idc_download_headless(
         series_uid=series_uid,
@@ -159,18 +162,19 @@ async def pathology_download(
     image_type: str = "PNG",
 ) -> dict:
     _ensure_configured()
-    res = await path_mod.pathology_download_runner(
-        dicom_store_url=dicom_store_url,
-        study_instance_uid=study_instance_uid,
-        series_instance_uid=series_instance_uid,
-        level=level,
-        x=x,
-        y=y,
-        width=width,
-        height=height,
-        image_type=image_type,
+    return await path_mod.pathology_download_runner.ainvoke(
+        {
+            "dicom_store_url": dicom_store_url,
+            "study_instance_uid": study_instance_uid,
+            "series_instance_uid": series_instance_uid,
+            "level": level,
+            "x": x,
+            "y": y,
+            "width": width,
+            "height": height,
+            "image_type": image_type,
+        }
     )
-    return normalize_task_result(res)
 
 
 @mcp.tool()
@@ -182,14 +186,15 @@ async def clinical_data_download(
     limit_rows: int = 5000,
 ) -> dict:
     _ensure_configured()
-    res = await clin_mod.clinical_data_download_runner(
-        collection_id=collection_id,
-        fields=fields,
-        filter_field=filter_field,
-        filter_value=filter_value,
-        limit_rows=limit_rows,
+    return await clin_mod.clinical_data_download_runner.ainvoke(
+        {
+            "collection_id": collection_id,
+            "fields": fields,
+            "filter_field": filter_field,
+            "filter_value": filter_value,
+            "limit_rows": limit_rows,
+        }
     )
-    return normalize_task_result(res)
 
 
 @mcp.tool()
@@ -201,14 +206,15 @@ async def idc_web_qa(
     reasoning_effort: str = "low",
 ) -> dict:
     _ensure_configured()
-    res = await webqa_mod.idc_web_qa_runner(
-        question=question,
-        top_k=top_k,
-        max_chars=max_chars,
-        synthesize=synthesize,
-        reasoning_effort=reasoning_effort,
+    return await webqa_mod.idc_web_qa_runner.ainvoke(
+        {
+            "question": question,
+            "top_k": top_k,
+            "max_chars": max_chars,
+            "synthesize": synthesize,
+            "reasoning_effort": reasoning_effort,
+        }
     )
-    return normalize_task_result(res)
 
 
 @mcp.tool()
@@ -220,20 +226,43 @@ async def idc_code_qa(
     reasoning_effort: str = "low",
 ) -> dict:
     _ensure_configured()
-    res = await code_qa_mod.idc_code_qa_runner(
-        question=question,
-        top_k=top_k,
-        max_chars=max_chars,
-        synthesize=synthesize,
-        reasoning_effort=reasoning_effort,
+    return await code_qa_mod.idc_code_qa_runner.ainvoke(
+        {
+            "question": question,
+            "top_k": top_k,
+            "max_chars": max_chars,
+            "synthesize": synthesize,
+            "reasoning_effort": reasoning_effort,
+        }
     )
-    return normalize_task_result(res)
 
 
 @mcp.tool()
 async def dicom2nifti(dicom_dir: str, out_dir: Optional[str] = None) -> dict:
     _ensure_configured()
-    res = await d2n_mod.dicom2nifti_runner(dicom_dir=dicom_dir, out_dir=out_dir)
+    return await d2n_mod.dicom2nifti_runner.ainvoke(
+        {"dicom_dir": dicom_dir, "out_dir": out_dir}
+    )
+
+
+@mcp.tool()
+async def orchestrator(
+    query: str,
+    pipeline: str = "full",
+    tool_names: Optional[List[str]] = None,
+    files: Optional[List[str]] = None,
+    thread_id: Optional[str] = None,
+    include_tool_payloads: bool = True,
+) -> dict:
+    # Call the underlying runner directly to avoid BaseTool.__call__ arg coercion.
+    res = await orch_mod.orchestrator_runner._runner(
+        query=query,
+        pipeline=pipeline,
+        tool_names=tool_names,
+        files=files,
+        thread_id=thread_id,
+        include_tool_payloads=include_tool_payloads,
+    )
     return normalize_task_result(res)
 
 

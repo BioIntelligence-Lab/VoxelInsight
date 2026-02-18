@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
 from typing import List, Optional
 
 import pandas as pd
 from idc_index import IDCClient
 from pydantic import BaseModel, Field
 
+from core.storage import get_run_dir
 from core.state import TaskResult
 from tools.shared import toolify_agent
 
@@ -125,8 +124,8 @@ async def clinical_data_download_runner(
 
     df = df.head(limit_rows)
 
-    tmp_dir = Path(tempfile.mkdtemp(prefix="clinical_"))
-    csv_path = tmp_dir / f"{collection_id}_clinical.csv"
+    out_root = get_run_dir("clinical_data_download", persist=True)
+    csv_path = out_root / f"{collection_id}_clinical.csv"
     df.to_csv(csv_path, index=False)
 
     summary = f"Clinical data downloaded via idc_index: collection={collection_id}, rows={len(df)}, columns={len(df.columns)}"
@@ -134,6 +133,7 @@ async def clinical_data_download_runner(
         "text": summary,
         "tool": "clinical_data_download",
         "df_preview": {"rows": df.head(50).to_dict("records"), "nrows": len(df)},
+        "output_dir": str(out_root),
     }
-    artifacts = {"files": [str(csv_path)]}
+    artifacts = {"files": [str(csv_path)], "output_dir": str(out_root)}
     return TaskResult(output=outputs, artifacts=artifacts)
