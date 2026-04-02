@@ -70,14 +70,28 @@ pip install -r requirements.txt
 
 ### 4) **Set up the environment (.env file)**
 
-We have developed our application to work with GPT APIs. This requires adding your OpenAI keys to the .env file
+Copy `.env.example` to `.env` and fill in the provider settings you want to use.
 
 ``` bash
-# OpenAI / model keys
+cp .env.example .env
+```
+
+Minimal OpenAI startup config:
+
+``` bash
+LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 ```
 
-If you are interested in using different integrations, including locally hosted LLMs, check out https://docs.chainlit.io/integrations/
+Minimal AWS Bedrock startup config:
+
+``` bash
+LLM_PROVIDER=bedrock
+BEDROCK_AWS_REGION=us-east-1
+```
+
+For Bedrock auth, use your standard AWS credential chain through `boto3` (for example: environment variables, your default AWS profile, or an attached IAM role).  
+The Bedrock model is currently selected in `core/llm_provider.py`.
 
 ### 5) **Run the Application**
 ``` bash
@@ -294,5 +308,3 @@ register it with
 async def my_tool_runner(...):
     # call agent.run()
 ```
-
-

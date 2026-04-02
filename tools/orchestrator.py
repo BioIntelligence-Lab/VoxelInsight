@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from langchain.schema.runnable.config import RunnableConfig
 from langgraph.graph import StateGraph, START, END
@@ -23,6 +22,7 @@ import tools.imaging as img_mod
 import tools.viz_slider as vz_mod
 import tools.radiomics as rad_mod
 import tools.monai_infer as monai_mod
+import tools.segmentation_orchestrator as seg_mod
 import tools.dicom_to_nifti as d2n_mod
 import tools.code_gen as code_mod
 import tools.universeg as ug_mod
@@ -39,6 +39,7 @@ import tools.pathology_download as path_mod
 import tools.idc_code_qa as code_qa_mod
 from tools.shared import toolify_agent, TOOL_REGISTRY
 from core.state import TaskResult
+from core.supervisor_llm import build_supervisor_llm
 
 
 _CONFIGURED: Dict[str, bool] = {"full": False, "idc": False}
@@ -112,6 +113,7 @@ def _configure_full_tools() -> None:
     idc_dl_mod.configure_idc_download_tool()
     clin_mod.configure_clinical_data_tool()
     ir_mod.configure_image_registration_tool()
+    _ = seg_mod.segmentation_orchestrator_runner
 
     _CONFIGURED["full"] = True
 
@@ -134,12 +136,10 @@ def _configure_idc_tools() -> None:
         df_BIH=df_BIH,
         system_prompt=Path("prompts/agent_systems/idc_query.txt").read_text(),
     )
-    idc_dl_mod.configure_idc_download_tool()
     clin_mod.configure_clinical_data_tool()
     webqa_mod.configure_idc_web_qa_tool(
         system_prompt=Path("prompts/agent_systems/idc_web_qa.txt").read_text(),
     )
-    path_mod.configure_pathology_download_tool()
     code_qa_mod.configure_idc_code_qa_tool(
         system_prompt=Path("prompts/agent_systems/idc_code_qa.txt").read_text(),
     )
@@ -163,7 +163,8 @@ def _policy_text(pipeline: str) -> str:
             "- When you output code snippets, ensure they are properly fenced with triple backticks and the appropriate language identifier.\n"
             "- When using idc code or web qa tools, make sure to tell users the source of gathered information and provide useful documentation links when possible.\n\n"
             "Output & chaining\n"
-            "- The UI automatically renders files, plots, and tables, so never restate local file paths or download links in your response.\n"
+            "- This orchestrator is exposed through MCP, so the user only sees your final text response. No files, plots, tables, or other artifacts are rendered automatically.\n"
+            "- Summarize relevant tool results directly in your final response instead of assuming the user can inspect artifacts.\n"
             "- Chain tools sequentially (e.g., query → download → conversion) rather than launching them all at once.\n"
             "- Never expose local filesystem paths in the final response—describe outcomes instead.\n"
         )
@@ -181,25 +182,26 @@ def _policy_text(pipeline: str) -> str:
         "- If the user just wants to view a study from a collection in IDC, you do not need to download the study.\n\n"
         "General Principles\n"
         "1) Chain tools when needed; run one tool, inspect the result, then use another tool if needed.\n"
-        "2) Tool outputs are rendered automatically in UI; do not show paths or re-display outputs.\n"
-        "3) Error handling: retry a failing tool max 3 times; refine instructions.\n"
-        "4) File context: if user says “this file,” assume most recent upload.\n"
-        "5) Other rules: keep instructions concise, no local file paths in final response.\n\n"
+        "2) This orchestrator is primarily used through MCP, and the user only sees your final text response. Tool outputs are not rendered automatically in a UI.\n"
+        "3) Summarize the important results from tools in your final response rather than assuming the user can inspect files, plots, or tables.\n"
+        "4) Error handling: retry a failing tool max 3 times; refine instructions.\n"
+        "5) File context: if user says “this file,” assume most recent upload.\n"
+        "6) Other rules: keep instructions concise, no local file paths in final response.\n\n"
         "Tool Usage Rules\n"
         "- For reasoning_effort, start with 'low' and increase only if needed.\n"
         "- Before every tool call, tell the user what you are doing in concise language.\n"
+        "- Use `segmentation_orchestrator` as the single entrypoint for segmentation requests.\n"
         "- For clinical_data_download, always identify the correct collection using idc_query first.\n"
     )
 
 
 def _resolve_tools(pipeline: str, tool_names: Optional[List[str]]) -> List[Any]:
-    tools = [t for t in TOOL_REGISTRY if t.name != "orchestrator"]
+    tools = [t for t in TOOL_REGISTRY if t.name not in {"orchestrator", "imaging", "monai"}]
     default_full = {
         "idc_query",
-        "imaging",
+        "segmentation_orchestrator",
         "viz_slider",
         "radiomics",
-        "monai",
         "code_gen",
         "midrc_query",
         "bih_query",
@@ -236,7 +238,7 @@ def _resolve_tools(pipeline: str, tool_names: Optional[List[str]]) -> List[Any]:
 
 def _build_graph(pipeline: str, tools: List[Any], checkpointer: Optional[MemorySaver]) -> Any:
     policy = SystemMessage(content=_policy_text(pipeline))
-    base_llm = ChatOpenAI(model="gpt-5-nano", temperature=1, reasoning_effort="low")
+    base_llm = build_supervisor_llm(temperature=1, reasoning_effort="low")
     llm = base_llm.bind_tools(tools)
     tool_node = ToolNode(tools=tools)
 
@@ -317,8 +319,12 @@ class OrchestratorArgs(BaseModel):
 @toolify_agent(
     name="orchestrator",
     description=(
-        "Runs the full VoxelInsight supervisor pipeline (agent + tool graph) against a single query. "
-        "Use this to route a request through the same tool-using behavior as the Chainlit app."
+        "IDC-focused supervisor for VoxelInsight MCP requests. Use this as the single entrypoint"
+        "if you want VoxelInsight to plan and execute an IDC task across its internal tools, then return one final "
+        "text answer. The orchestrator can handle IDC metadata and collection questions, IDC documentation/code Q&A, "
+        "clinical data export requests, pathology tile retrieval, IDC DICOM download workflows, and DICOM-to-NIfTI "
+        "conversion, including multi-step tool chaining when needed. It decides which internal IDC tools to call, "
+        "passes outputs between them, and summarizes the relevant results for the caller."
     ),
     args_schema=OrchestratorArgs,
     timeout_s=1200,

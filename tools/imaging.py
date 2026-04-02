@@ -3,6 +3,7 @@ import shutil
 import pathlib
 import subprocess
 import asyncio
+import csv
 from typing import List, Dict, Tuple, Optional
 from tools.shared import toolify_agent, normalize_task_result
 from progress_ui import update_progress
@@ -38,6 +39,58 @@ class ImagingAgent:
 
     def __init__(self, ct_mappings: str):
         self.ct_mappings = ct_mappings
+        self.allowed_rois_by_task = self._load_allowed_rois()
+
+    def _load_allowed_rois(self) -> Dict[str, set[str]]:
+        mapping_files = (
+            pathlib.Path("Data/TotalSegmentatorMappingsCT.tsv"),
+            pathlib.Path("Data/TotalSegmentatorMappingsMRI.tsv"),
+        )
+        allowed: Dict[str, set[str]] = {}
+        for mapping_file in mapping_files:
+            if not mapping_file.exists():
+                continue
+            with mapping_file.open("r", encoding="utf-8") as f:
+                reader = csv.DictReader(f, delimiter="\t")
+                for row in reader:
+                    task = str(row.get("task_name", "")).strip().lower()
+                    roi = str(row.get("roi_subset", "")).strip().lower()
+                    if not task or not roi:
+                        continue
+                    allowed.setdefault(task, set()).add(roi)
+        return allowed
+
+    @staticmethod
+    def _normalize_roi_name(value: str) -> str:
+        return value.strip().lower().replace(" ", "_").replace("-", "_")
+
+    def _validate_mapping_inputs(
+        self,
+        task_name: str,
+        requested_rois: List[str],
+        fast: bool,
+    ) -> Optional[str]:
+        task = task_name.strip().lower()
+        normalized_rois = [self._normalize_roi_name(r) for r in requested_rois]
+
+        if task != "liver_vessels" and task in self.allowed_rois_by_task and not normalized_rois:
+            return None
+
+        if task != "liver_vessels" and task not in self.allowed_rois_by_task and normalized_rois:
+            return f"roi_subset is only supported for tasks: {', '.join(sorted(self.allowed_rois_by_task))}."
+
+        if task == "liver_vessels" and fast:
+            return "Task 'liver_vessels' cannot be run with fast=true."
+
+        if normalized_rois and task in self.allowed_rois_by_task:
+            allowed = self.allowed_rois_by_task[task]
+            invalid = [r for r in normalized_rois if r not in allowed]
+            if invalid:
+                return (
+                    f"Invalid roi_subset for task '{task_name}': {invalid}. "
+                    f"Allowed values: {sorted(allowed)}."
+                )
+        return None
 
     async def run(self, task: Task, state: ConversationState) -> TaskResult:
         if not task.files:
@@ -74,6 +127,11 @@ class ImagingAgent:
 
             seen = set()
             requested_rois = [r for r in requested_rois if not (r in seen or seen.add(r))]
+            fast = bool(task.kwargs.get("fast", True))
+
+            validation_error = self._validate_mapping_inputs(task_name=task_name, requested_rois=requested_rois, fast=fast)
+            if validation_error:
+                return TaskResult(output=validation_error)
 
             cmd = [
                 "TotalSegmentator",
@@ -84,7 +142,7 @@ class ImagingAgent:
             if requested_rois:
                 cmd += ["--roi_subset"] + requested_rois
 
-            if task.kwargs.get("fast", True):
+            if fast:
                 cmd += ["--fast"]
 
             #await update_progress(20, "Running TotalSegmentator")
@@ -168,6 +226,11 @@ class ImagingAgent:
 
             seen = set()
             requested_rois = [r for r in requested_rois if not (r in seen or seen.add(r))]
+            fast = bool(task.kwargs.get("fast", True))
+
+            validation_error = self._validate_mapping_inputs(task_name=task_name, requested_rois=requested_rois, fast=fast)
+            if validation_error:
+                return TaskResult(output=validation_error)
 
             out_root = str(get_run_dir(self.name, persist=True))
             per_input = []
@@ -195,7 +258,7 @@ class ImagingAgent:
                 ]
                 if requested_rois:
                     cmd += ["--roi_subset"] + requested_rois
-                if task.kwargs.get("fast", True):
+                if fast:
                     cmd += ["--fast"]
 
                 async def _case_progress(local_pct: int, label: str, **extras):

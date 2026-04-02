@@ -3,15 +3,13 @@
 import os
 import pathlib
 import shutil
+import warnings
 from typing import List, Dict, Optional
 
 import numpy as np
 import torch
 import pandas as pd
 from pydantic import BaseModel, Field
-
-from merlin import Merlin
-from merlin.data import DataLoader
 
 from core.state import Task, TaskResult, ConversationState
 from core.storage import get_run_dir, get_temp_dir
@@ -22,6 +20,22 @@ from tools.shared import toolify_agent, _cs
 # -------------------------------------------------------------------
 
 _MERLIN_CTX: Optional[Dict] = None
+_MERLIN_IMPORT_ERROR: Optional[Exception] = None
+
+
+def _load_merlin_components():
+    """
+    Import MERLIN symbols lazily so this module can still import even if the
+    installed `merlin` package is incompatible with this tool.
+    """
+    global _MERLIN_IMPORT_ERROR
+    try:
+        from merlin import Merlin  # type: ignore
+        from merlin.data import DataLoader  # type: ignore
+        return Merlin, DataLoader
+    except Exception as exc:
+        _MERLIN_IMPORT_ERROR = exc
+        return None, None
 
 
 def configure_merlin_tool(
@@ -44,6 +58,22 @@ def configure_merlin_tool(
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
+    Merlin, DataLoader = _load_merlin_components()
+    if Merlin is None or DataLoader is None:
+        msg = (
+            "Could not import MERLIN model components for `merlin_3d`. "
+            "A different `merlin` package appears to be installed in this environment. "
+            f"Original error: {_MERLIN_IMPORT_ERROR}"
+        )
+        warnings.warn(msg)
+        _MERLIN_CTX = {
+            "available": False,
+            "import_error": msg,
+            "device": device,
+            "cache_root": cache_root,
+        }
+        return
+
     merlin_kwargs = dict(merlin_kwargs or {})
     # Demo pattern: Merlin(ImageEmbedding=True) for embeddings
     merlin_kwargs.setdefault("ImageEmbedding", True)
@@ -53,7 +83,9 @@ def configure_merlin_tool(
     model.to(device)
 
     _MERLIN_CTX = {
+        "available": True,
         "model": model,
+        "dataloader_cls": DataLoader,
         "device": device,
         "cache_root": cache_root,
     }
@@ -100,7 +132,10 @@ class MerlinEmbeddingAgent:
             raise RuntimeError(
                 "MERLIN 3D tool not configured. Call configure_merlin_tool(...) at app startup."
             )
+        if not _MERLIN_CTX.get("available", True):
+            raise RuntimeError(_MERLIN_CTX.get("import_error", "MERLIN is unavailable in this environment."))
         self.model = _MERLIN_CTX["model"]
+        self.dataloader_cls = _MERLIN_CTX["dataloader_cls"]
         self.device = _MERLIN_CTX["device"]
         self.cache_root = _MERLIN_CTX["cache_root"]
 
@@ -149,7 +184,7 @@ class MerlinEmbeddingAgent:
         datalist = [{"image": str(vol_path)}]
         cache_dir = self._get_cache_dir_for_volume(out_root, vol_path)
 
-        dataloader = DataLoader(
+        dataloader = self.dataloader_cls(
             datalist=datalist,
             cache_dir=cache_dir,
             batchsize=1,
@@ -267,6 +302,8 @@ async def merlin_3d_runner(
 ):
     if _MERLIN_CTX is None:
         raise RuntimeError("MERLIN 3D tool not configured. Call configure_merlin_tool(...) first.")
+    if not _MERLIN_CTX.get("available", True):
+        raise RuntimeError(_MERLIN_CTX.get("import_error", "MERLIN is unavailable in this environment."))
 
     files: List[str] = []
     if volume_paths:

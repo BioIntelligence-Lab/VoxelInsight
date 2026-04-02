@@ -1,9 +1,15 @@
+import asyncio
 import os
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List, Union, Any
+from typing import Optional, Dict, Any, List, Union
 
 from openai import AsyncOpenAI
 from anthropic import AsyncAnthropic
+
+try:
+    import boto3
+except Exception:
+    boto3 = None
 
 
 @dataclass
@@ -22,13 +28,23 @@ class AnthropicSettings:
     extra: Dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class BedrockSettings:
+    model: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    temperature: float = 0.7
+    max_tokens: int = 1024
+    region_name: Optional[str] = None
+    credentials_profile_name: Optional[str] = None
+    extra: Dict[str, Any] = field(default_factory=dict)
+
+
 class LLMClient:
     def __init__(
         self,
         *,
         provider: str,
-        client: Union[AsyncOpenAI, AsyncAnthropic],
-        settings: Union[OpenAISettings, AnthropicSettings],
+        client: Union[AsyncOpenAI, AsyncAnthropic, Any],
+        settings: Union[OpenAISettings, AnthropicSettings, BedrockSettings],
     ):
         self.provider = provider
         self.client = client
@@ -80,6 +96,48 @@ class LLMClient:
                 return None
             return "".join(getattr(part, "text", "") for part in parts if getattr(part, "text", ""))
 
+        if self.provider == "bedrock":
+            system_blocks = [{"text": m["content"]} for m in normalized if m["role"] == "system" and m["content"]]
+
+            bedrock_messages: List[Dict[str, Any]] = []
+            for m in normalized:
+                if m["role"] not in {"user", "assistant"}:
+                    continue
+                content = str(m.get("content") or "").strip()
+                if not content:
+                    continue
+                role = "assistant" if m["role"] == "assistant" else "user"
+                if bedrock_messages and bedrock_messages[-1]["role"] == role:
+                    bedrock_messages[-1]["content"].append({"text": content})
+                else:
+                    bedrock_messages.append({"role": role, "content": [{"text": content}]})
+
+            if not bedrock_messages:
+                bedrock_messages = [{"role": "user", "content": [{"text": "Continue."}]}]
+
+            extra = getattr(self.settings, "extra", None) or {}
+            request: Dict[str, Any] = {
+                "modelId": getattr(self.settings, "model", "anthropic.claude-3-5-sonnet-20241022-v2:0"),
+                "messages": bedrock_messages,
+            }
+            if system_blocks:
+                request["system"] = system_blocks
+            if "inferenceConfig" not in extra:
+                request["inferenceConfig"] = {
+                    "temperature": target_temp,
+                    "maxTokens": getattr(self.settings, "max_tokens", 1024),
+                }
+            request.update(extra)
+
+            response = await asyncio.to_thread(self.client.converse, **request)
+            content_blocks = (((response or {}).get("output") or {}).get("message") or {}).get("content") or []
+            text_parts = [
+                block.get("text", "")
+                for block in content_blocks
+                if isinstance(block, dict) and block.get("text")
+            ]
+            return "".join(text_parts) if text_parts else None
+
         raise ValueError(f"Unsupported provider {self.provider}")
 
 
@@ -105,6 +163,7 @@ def _normalize_messages(messages: List[Union[Dict[str, str], Any]]) -> List[Dict
 def choose_llm(
     openai_settings: Optional[OpenAISettings] = None,
     anthropic_settings: Optional[AnthropicSettings] = None,
+    bedrock_settings: Optional[BedrockSettings] = None,
 ):
     provider = (os.getenv("LLM_PROVIDER") or "openai").strip().lower()
 
@@ -134,4 +193,26 @@ def choose_llm(
             settings=settings,
         )
 
-    raise ValueError(f"Unknown LLM_PROVIDER {provider}. Use 'openai' or 'anthropic'.")
+    if provider == "bedrock":
+        if boto3 is None:
+            raise RuntimeError(
+                "boto3 is required when LLM_PROVIDER=bedrock. Install boto3 and configure AWS credentials."
+            )
+
+        settings = bedrock_settings or BedrockSettings()
+        region_name = settings.region_name or os.getenv("BEDROCK_AWS_REGION") or os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION")
+        session_kwargs: Dict[str, Any] = {}
+        if settings.credentials_profile_name:
+            session_kwargs["profile_name"] = settings.credentials_profile_name
+        session = boto3.session.Session(**session_kwargs)
+        client_kwargs: Dict[str, Any] = {}
+        if region_name:
+            client_kwargs["region_name"] = region_name
+        client = session.client("bedrock-runtime", **client_kwargs)
+        return LLMClient(
+            provider=provider,
+            client=client,
+            settings=settings,
+        )
+
+    raise ValueError(f"Unknown LLM_PROVIDER {provider}. Use 'openai', 'anthropic', or 'bedrock'.")

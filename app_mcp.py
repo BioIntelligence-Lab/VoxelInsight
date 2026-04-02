@@ -13,7 +13,7 @@ import chainlit as cl
 from chainlit.types import ThreadDict
 from dotenv import load_dotenv
 
-from langchain_openai import ChatOpenAI
+from core.supervisor_llm import build_supervisor_llm
 from langchain_core.messages import (
     SystemMessage,
     HumanMessage,
@@ -80,7 +80,7 @@ def _schema_to_model(name: str, schema: Optional[Dict[str, Any]]):
             "MCP_orchestrator_Args",
             query=(Optional[str], None),
             input=(Optional[str], None),
-            pipeline=(Optional[str], "full"),
+            pipeline=(Optional[str], "idc"),
             tool_names=(Optional[List[str]], None),
             files=(Optional[List[str]], None),
             thread_id=(Optional[str], None),
@@ -136,15 +136,13 @@ _MCP_STOP: asyncio.Event = asyncio.Event()
 def build_graph(tools: Optional[List[BaseTool]] = None, checkpointer: Optional[MemorySaver] = None):
     def _orchestrator_tool_summary() -> str:
         return (
-            "You can only call the MCP tool `orchestrator`. It runs the VoxelInsight supervisor pipeline.\n"
-            "The orchestrator supports two pipelines:\n"
-            "- pipeline='idc' tools: idc_query (IDC metadata Q&A), idc_download (IDC series download), "
-            "dicom2nifti (DICOM->NIfTI), idc_web_qa (web-grounded IDC Q&A), pathology_download (DICOMweb tiles), "
-            "clinical_data_download (IDC clinical tables), idc_code_qa (codebase Q&A).\n"
-            "- pipeline='full' tools (superset): idc_query, imaging (TotalSegmentator), viz_slider (slice viewer), "
-            "radiomics, monai (MONAI inference), code_gen, midrc_query, bih_query, midrc_download, tcia_download, "
-            "idc_download, clinical_data_download, image_registration, dicom2nifti, universeg, merlin_3d.\n"
-            "Always route user requests through orchestrator and set the appropriate pipeline."
+            "You can only call the MCP tool `orchestrator`.\n"
+            "This MCP server exposes the IDC-oriented VoxelInsight orchestrator, which handles IDC metadata and "
+            "collection questions, IDC documentation/code Q&A, clinical data export requests, pathology tile "
+            "retrieval, IDC DICOM download workflows, and DICOM-to-NIfTI conversion.\n"
+            "The MCP tool returns text for you to read. It does not automatically render files, plots, tables, or "
+            "other artifacts to the user.\n"
+            "Treat it as the single entrypoint for VoxelInsight work in this app and route requests through it.\n"
         )
 
     def _select_tools(all_tools: List[BaseTool]) -> List[BaseTool]:
@@ -158,12 +156,14 @@ def build_graph(tools: Optional[List[BaseTool]] = None, checkpointer: Optional[M
         content=(
             "You are VoxelInsight MCP, a minimal test supervisor.\n"
             f"{_orchestrator_tool_summary()}\n"
+            "Do not describe or rely on any other VoxelInsight pipelines or MCP tools.\n"
+            "Do not assume the user can inspect tool artifacts directly; if a tool result matters, summarize it in text.\n"
             "Keep responses concise."
         )
     )
 
     tools = _select_tools(tools or [])
-    base_llm = ChatOpenAI(model="gpt-5-nano", temperature=1, reasoning_effort="low")
+    base_llm = build_supervisor_llm(temperature=1, reasoning_effort="low")
     llm = base_llm.bind_tools(tools) if tools else base_llm
     tool_node = ToolNode(tools=tools)
 

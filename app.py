@@ -1,21 +1,19 @@
 import os
 import asyncio
 import zipfile
-import tempfile
 import shutil
 from pathlib import Path
 from typing import Dict, Optional, List, Any
 import httpx
 
-from core.llm_provider import choose_llm, OpenAISettings, AnthropicSettings
+from core.supervisor_llm import build_supervisor_llm
+from core.storage import get_temp_dir
 
 import chainlit as cl
 from chainlit.types import ThreadDict
 from dotenv import load_dotenv
 import pandas as pd
 
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import (
     SystemMessage,
     HumanMessage,
@@ -39,6 +37,7 @@ import tools.imaging as img_mod
 import tools.viz_slider as vz_mod
 import tools.radiomics as rad_mod
 import tools.monai_infer as monai_mod
+import tools.segmentation_orchestrator as seg_mod
 import tools.dicom_to_nifti as d2n_mod
 import tools.code_gen as code_mod
 import tools.universeg as ug_mod
@@ -127,6 +126,7 @@ _ = img_mod.imaging_runner
 _ = vz_mod.viz_slider_runner
 _ = rad_mod.radiomics_runner
 _ = monai_mod.monai_runner
+_ = seg_mod.segmentation_orchestrator_runner
 _ = code_mod.code_gen_runner
 _ = midrc_mod.midrc_query_runner
 _ = bih_mod.bih_query_runner
@@ -141,13 +141,15 @@ _ = merlin3d_mod.merlin_3d_runner
 ALL_TOOLS: tuple[BaseTool, ...] = tuple(TOOL_REGISTRY)
 TOOL_NAMES = {tool.name: tool for tool in ALL_TOOLS}
 DEFAULT_TOOL_NAMES = tuple(TOOL_NAMES)
+HIDDEN_TOP_LEVEL_TOOLS = {"imaging", "monai"}
 
 def resolve_tool_subset(raw: str | None):
+    available_tools = [tool for tool in ALL_TOOLS if tool.name not in HIDDEN_TOP_LEVEL_TOOLS]
     if not raw:
-        return list(ALL_TOOLS)
+        return available_tools
     requested = {name.strip() for name in raw.split(",") if name.strip()}
-    subset = [TOOL_NAMES[name] for name in requested if name in TOOL_NAMES]
-    return subset or list(ALL_TOOLS)  
+    subset = [TOOL_NAMES[name] for name in requested if name in TOOL_NAMES and name not in HIDDEN_TOP_LEVEL_TOOLS]
+    return subset or available_tools
 
 USED_TOOLS = resolve_tool_subset(os.getenv("VOXELINSIGHT_TOOLS"))
 
@@ -205,15 +207,11 @@ def build_graph(checkpointer=None):
         - For llm based tools where you pass a reasoning_effort parameter, choose the lowest reasoning effort level that is likely to complete the task successfully. Start with 'low' for simple tasks and increase to 'medium' for more complex tasks or if previous attempts failed. Higher reasoning effort levels take longer (which is not prefferd) but may produce more accurate results.
         - Before every tool call, tell the user what you are doing in understandable and concise language. Don't explain tool call parameters in detail unless necessary. A quick + concise summary is sufficient.
 
-        ### MONAI Inference (`monai_infer`)
-        - Bundle-specific instructions are provided here (if blank ignore - the tools is unaivailable): {Monai_Instructions}.
-
-        ### Imaging Segmentation (`imaging`)
-        - Performs segmentation using TotalSegmentator.  
-        - If multiple files are provided, pass them as a list instead of calling seperate instances of the imaging tool.
-        - Mappings provided for TotalSegmentator tasks and subsets (if blank ignore - the tools is unaivailable):  
-        - CT: {TS_CT}  
-        - MRI: {TS_MRI}  
+        ### Segmentation Orchestrator (`segmentation_orchestrator`)
+        - Use this as the single entrypoint for segmentation requests.
+        - It is a dedicated sub-supervisor that decides whether to use TotalSegmentator or MONAI.
+        - If multiple files are provided, pass them as a list instead of calling separate segmentation steps yourself.
+        - TotalSegmentator mappings and MONAI bundle details are handled inside the sub-supervisor.
 
         ### TCIA Download (`tcia_download`)
         - You don't have an API key for this currently. Make sure to use the proper method for download without API.
@@ -251,7 +249,7 @@ def build_graph(checkpointer=None):
         - If it’s a single row/column → return the plain value (e.g., “Total patients: 12345”).  
         - Otherwise → summarize key columns briefly.  
         3. Files, images, sliders, and dataframes are automatically shown in UI — do not re-display them.  
-        4. You may chain outputs between tools by manually passing them in (e.g., use masks from `imaging` in `viz_slider` or `radiomics`).  
+        4. You may chain outputs between tools by manually passing them in (e.g., use masks from `segmentation_orchestrator` in `viz_slider` or `radiomics`).  
 
         ---
 
@@ -259,7 +257,7 @@ def build_graph(checkpointer=None):
         - Never fabricate IDC answers without `idc_query`.   
         - Never provide download paths/links or try to display tool outputs already shown by the UI.  
         - Never provided direct paths to any files (e.g., NIfTI, DICOM) in your responses.
-        - Never specify `roi_subset` for tasks other than `total` or `total_mr`.  
+        - Never call individual segmentation tools directly from this supervisor; use `segmentation_orchestrator`.  
         - Never skip segmentation before visualization/radiomics.  
         - Never expose local filesystem paths in the final response—describe outcomes instead.
         ---
@@ -267,7 +265,7 @@ def build_graph(checkpointer=None):
     ))
 
     print("using tools:", [t.name for t in USED_TOOLS])
-    base_llm = ChatOpenAI(model="gpt-5-nano", temperature=1, reasoning_effort="low")
+    base_llm = build_supervisor_llm(temperature=1, reasoning_effort="low")
     llm = base_llm.bind_tools(USED_TOOLS)
     tool_node = ToolNode(tools=USED_TOOLS)  
 
@@ -406,7 +404,7 @@ async def _render_payload(payload: Dict[str, Any]):
     if not files and output_dir and Path(output_dir).exists():
         files = [str(f) for f in Path(output_dir).rglob("*") if f.is_file()]
     if files:
-        zip_tmpdir = Path(tempfile.mkdtemp(prefix="vi_zip_"))
+        zip_tmpdir = get_temp_dir(prefix="vi_zip")
         zip_path = zip_tmpdir / "download.zip"
         await _zip_paths(files, zip_path)
         if tool == "dicom2nifti":
@@ -449,8 +447,9 @@ class VoxelInsightHandler(BaseCallbackHandler):
         self.tool_descriptions = {
             "idc_query": "IDC Query Tool",
             "bih_query": "BIH Query Tool",
+            "segmentation_orchestrator": "Segmentation Supervisor",
             "imaging": "TotalSegmentator Segmentation - this may take a while",
-            "monai_infer": "Monai Infer Tool - this may take a while",
+            "monai": "MONAI Segmentation - this may take a while",
             "radiomics": "Radiomics Analysis",
             "viz_slider": "Slider Visualization Tool",
             "dicom_to_nifti": "DICOM to NIfTI Conversion",
@@ -496,7 +495,7 @@ async def on_message(message: cl.Message):
     file_elements = [el for el in (message.elements or []) if isinstance(el, cl.File)]
     files: List[str] = []
     for f in file_elements:
-        tmpdir = Path(tempfile.mkdtemp())
+        tmpdir = get_temp_dir(prefix="uploads")
         new_path = tmpdir / f.name
         shutil.copy(f.path, new_path)
         files.append(str(new_path))

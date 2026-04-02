@@ -7,15 +7,13 @@ from pathlib import Path
 from typing import Dict, Optional, List, Any
 import httpx
 
-from core.llm_provider import choose_llm, OpenAISettings, AnthropicSettings
+from core.supervisor_llm import build_supervisor_llm
 
 import chainlit as cl
 from chainlit.types import ThreadDict
 from dotenv import load_dotenv
 import pandas as pd
 
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import (
     SystemMessage,
     HumanMessage,
@@ -120,7 +118,7 @@ def build_graph(checkpointer=None):
     ))
 
     print("using tools:", [t.name for t in ALL_TOOLS])
-    base_llm = ChatOpenAI(model="gpt-5-nano", temperature=1, reasoning_effort="low")
+    base_llm = build_supervisor_llm(temperature=1, reasoning_effort="low")
     llm = base_llm.bind_tools(ALL_TOOLS)
     tool_node = ToolNode(tools=ALL_TOOLS)  
 
