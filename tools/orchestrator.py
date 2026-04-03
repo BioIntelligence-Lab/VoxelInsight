@@ -34,9 +34,6 @@ import tools.idc_download as idc_dl_mod
 import tools.clinical_data as clin_mod
 import tools.image_registration as ir_mod
 #import tools.merlin_3d as merlin3d_mod
-import tools.idc_web_qa as webqa_mod
-import tools.pathology_download as path_mod
-import tools.idc_code_qa as code_qa_mod
 from tools.shared import toolify_agent, TOOL_REGISTRY
 from core.state import TaskResult
 from core.supervisor_llm import build_supervisor_llm
@@ -137,12 +134,6 @@ def _configure_idc_tools() -> None:
         system_prompt=Path("prompts/agent_systems/idc_query.txt").read_text(),
     )
     clin_mod.configure_clinical_data_tool()
-    webqa_mod.configure_idc_web_qa_tool(
-        system_prompt=Path("prompts/agent_systems/idc_web_qa.txt").read_text(),
-    )
-    code_qa_mod.configure_idc_code_qa_tool(
-        system_prompt=Path("prompts/agent_systems/idc_code_qa.txt").read_text(),
-    )
 
     _CONFIGURED["idc"] = True
 
@@ -150,9 +141,8 @@ def _configure_idc_tools() -> None:
 def _policy_text(pipeline: str) -> str:
     if pipeline == "idc":
         return (
-            "You are **VoxelInsight IDC**, a multi-agent assistant for IDC: metadata Q&A, "
-            "web-grounded answers, radiology downloads, histopathology tiles via DICOMweb, "
-            "clinical data exports (idc_index), and DICOM→NIfTI conversion.\n\n"
+            "You are **VoxelInsight IDC**, a multi-agent assistant for IDC metadata queries "
+            "and clinical data exports.\n\n"
             "Core behavior\n"
             "- Only answer what the user asked; request clarifications solely when required to complete a tool call.\n"
             "- Only when asked about VoxelInsight, answer yourself otherwise always use tools. YOU ARE NOT ALLOWED TO ANSWER DIRECTLY.\n"
@@ -161,11 +151,11 @@ def _policy_text(pipeline: str) -> str:
             "- Before each tool call, tell the user what you are about to do in one concise sentence.\n"
             "- For llm based tools where you pass a reasoning_effort parameter, choose the lowest reasoning effort level that is likely to complete the task successfully.\n"
             "- When you output code snippets, ensure they are properly fenced with triple backticks and the appropriate language identifier.\n"
-            "- When using idc code or web qa tools, make sure to tell users the source of gathered information and provide useful documentation links when possible.\n\n"
+            "- Use `idc_query` for IDC metadata questions and use `clinical_data_download` only after identifying the correct collection.\n\n"
             "Output & chaining\n"
             "- This orchestrator is exposed through MCP, so the user only sees your final text response. No files, plots, tables, or other artifacts are rendered automatically.\n"
             "- Summarize relevant tool results directly in your final response instead of assuming the user can inspect artifacts.\n"
-            "- Chain tools sequentially (e.g., query → download → conversion) rather than launching them all at once.\n"
+            "- Chain tools sequentially when needed rather than launching them all at once.\n"
             "- Never expose local filesystem paths in the final response—describe outcomes instead.\n"
         )
 
@@ -216,12 +206,7 @@ def _resolve_tools(pipeline: str, tool_names: Optional[List[str]]) -> List[Any]:
     }
     default_idc = {
         "idc_query",
-        "dicom2nifti",
-        "idc_download",
-        "idc_web_qa",
-        "pathology_download",
         "clinical_data_download",
-        "idc_code_qa",
     }
     if pipeline == "idc":
         tools = [t for t in tools if t.name in default_idc]
@@ -319,11 +304,10 @@ class OrchestratorArgs(BaseModel):
 @toolify_agent(
     name="orchestrator",
     description=(
-        "IDC-focused supervisor for VoxelInsight MCP requests. Use this as the single entrypoint"
+        "IDC-focused supervisor for VoxelInsight MCP requests. Use this as the single entrypoint "
         "if you want VoxelInsight to plan and execute an IDC task across its internal tools, then return one final "
-        "text answer. The orchestrator can handle IDC metadata and collection questions, IDC documentation/code Q&A, "
-        "clinical data export requests, pathology tile retrieval, IDC DICOM download workflows, and DICOM-to-NIfTI "
-        "conversion, including multi-step tool chaining when needed. It decides which internal IDC tools to call, "
+        "text answer. The orchestrator can handle IDC metadata and collection questions plus clinical data export "
+        "requests, including multi-step tool chaining when needed. It decides which internal IDC tools to call, "
         "passes outputs between them, and summarizes the relevant results for the caller."
     ),
     args_schema=OrchestratorArgs,
