@@ -22,7 +22,7 @@ from langchain_core.messages import (
     BaseMessage,
     AIMessageChunk,
 )
-from langchain.schema.runnable.config import RunnableConfig
+from langchain_core.runnables.config import RunnableConfig
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import MessagesState          
 from langgraph.prebuilt import ToolNode
@@ -502,8 +502,6 @@ async def on_message(message: cl.Message):
 
     config = {"configurable": {"thread_id": cl.context.session.id}}
 
-    cb = cl.LangchainCallbackHandler()
-
     status_handler = VoxelInsightHandler()
 
     await status_handler._rename_root("Initializing VoxelInsight…")
@@ -532,7 +530,7 @@ async def on_message(message: cl.Message):
         async for event, meta in GRAPH.astream(
             initial_state,
             stream_mode="messages",
-            config=RunnableConfig(callbacks=[cb, status_handler], **config),
+            config=RunnableConfig(callbacks=[status_handler], **config),
         ):
             node = meta.get("langgraph_node")
             if node:

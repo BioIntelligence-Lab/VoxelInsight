@@ -1,0 +1,1 @@
+{"code": "import pandas as pd\nres_query = df_IDC['PatientID'].nunique()", "title": "Generated code"}

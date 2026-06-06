@@ -4,6 +4,7 @@ import os
 import pathlib
 import shutil
 import warnings
+from importlib import metadata as importlib_metadata
 from typing import List, Dict, Optional
 
 import numpy as np
@@ -21,6 +22,26 @@ from tools.shared import toolify_agent, _cs
 
 _MERLIN_CTX: Optional[Dict] = None
 _MERLIN_IMPORT_ERROR: Optional[Exception] = None
+
+
+def _describe_merlin_distribution() -> str:
+    try:
+        distributions = importlib_metadata.packages_distributions().get("merlin", [])
+    except Exception:
+        distributions = []
+
+    if not distributions:
+        return "No installed distribution is currently providing the `merlin` import."
+
+    parts = []
+    for dist_name in distributions:
+        try:
+            version = importlib_metadata.version(dist_name)
+        except Exception:
+            version = "unknown"
+        parts.append(f"{dist_name}=={version}")
+
+    return "The `merlin` import currently resolves from: " + ", ".join(parts)
 
 
 def _load_merlin_components():
@@ -62,7 +83,10 @@ def configure_merlin_tool(
     if Merlin is None or DataLoader is None:
         msg = (
             "Could not import MERLIN model components for `merlin_3d`. "
-            "A different `merlin` package appears to be installed in this environment. "
+            "This tool expects the Stanford MIMI package published as `merlin-vlm`, "
+            "which exposes `from merlin import Merlin` and `from merlin.data import DataLoader`. "
+            f"{_describe_merlin_distribution()} "
+            "If you have the LLNL workflow package `merlin` installed, remove it and install `merlin-vlm` instead. "
             f"Original error: {_MERLIN_IMPORT_ERROR}"
         )
         warnings.warn(msg)
@@ -78,17 +102,61 @@ def configure_merlin_tool(
     # Demo pattern: Merlin(ImageEmbedding=True) for embeddings
     merlin_kwargs.setdefault("ImageEmbedding", True)
 
-    model = Merlin(**merlin_kwargs)
-    model.eval()
-    model.to(device)
+    checkpoint_parent = pathlib.Path(cache_root) if cache_root else get_temp_dir(prefix="merlin_models")
+    checkpoint_dir = checkpoint_parent / "checkpoints"
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     _MERLIN_CTX = {
         "available": True,
-        "model": model,
+        "model": None,
+        "merlin_cls": Merlin,
         "dataloader_cls": DataLoader,
         "device": device,
         "cache_root": cache_root,
+        "merlin_kwargs": merlin_kwargs,
+        "checkpoint_dir": str(checkpoint_dir),
     }
+
+
+def _ensure_merlin_model_loaded() -> None:
+    global _MERLIN_CTX
+
+    if _MERLIN_CTX is None:
+        raise RuntimeError("MERLIN 3D tool not configured. Call configure_merlin_tool(...) at app startup.")
+    if not _MERLIN_CTX.get("available", True):
+        raise RuntimeError(_MERLIN_CTX.get("import_error", "MERLIN is unavailable in this environment."))
+    if _MERLIN_CTX.get("model") is not None:
+        return
+
+    Merlin = _MERLIN_CTX["merlin_cls"]
+    checkpoint_dir = pathlib.Path(_MERLIN_CTX["checkpoint_dir"])
+    merlin_kwargs = dict(_MERLIN_CTX.get("merlin_kwargs") or {})
+    device = _MERLIN_CTX["device"]
+
+    class WritableCheckpointMerlin(Merlin):
+        def _load_model(self, **kwargs):
+            checkpoint_name = self._config["checkpoint"]
+            model_builder = self._config["builder"]
+
+            checkpoint_path = checkpoint_dir / checkpoint_name
+            self._download_checkpoint(filename=checkpoint_name, local_dir=str(checkpoint_dir))
+
+            model = model_builder(**kwargs)
+
+            print(f"Loading checkpoint for '{self.task}' task from {checkpoint_path}")
+            state_dict = torch.load(str(checkpoint_path), map_location="cpu")
+
+            if self.task == "five_year_disease_prediction":
+                model.encode_image.i3_resnet.load_state_dict(state_dict, strict=True)
+            else:
+                model.load_state_dict(state_dict)
+
+            return model
+
+    model = WritableCheckpointMerlin(**merlin_kwargs)
+    model.eval()
+    model.to(device)
+    _MERLIN_CTX["model"] = model
 
 
 # -------------------------------------------------------------------
@@ -134,6 +202,7 @@ class MerlinEmbeddingAgent:
             )
         if not _MERLIN_CTX.get("available", True):
             raise RuntimeError(_MERLIN_CTX.get("import_error", "MERLIN is unavailable in this environment."))
+        _ensure_merlin_model_loaded()
         self.model = _MERLIN_CTX["model"]
         self.dataloader_cls = _MERLIN_CTX["dataloader_cls"]
         self.device = _MERLIN_CTX["device"]

@@ -9,7 +9,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
-from langchain.schema.runnable.config import RunnableConfig
+from langchain_core.runnables.config import RunnableConfig
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import MessagesState
 from langgraph.prebuilt import ToolNode

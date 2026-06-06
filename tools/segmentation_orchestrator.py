@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
-from langchain.schema.runnable.config import RunnableConfig
+from langchain_core.runnables.config import RunnableConfig
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import MessagesState
 from pydantic import BaseModel, Field
