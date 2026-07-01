@@ -40,6 +40,7 @@ import tools.monai_infer as monai_mod
 import tools.segmentation_orchestrator as seg_mod
 import tools.dicom_to_nifti as d2n_mod
 import tools.code_gen as code_mod
+import tools.table_chart as table_chart_mod
 import tools.universeg as ug_mod
 import tools.midrc_query as midrc_mod
 import tools.midrc_download as midrc_dl_mod
@@ -128,6 +129,7 @@ _ = rad_mod.radiomics_runner
 _ = monai_mod.monai_runner
 _ = seg_mod.segmentation_orchestrator_runner
 _ = code_mod.code_gen_runner
+_ = table_chart_mod.table_chart_runner
 _ = midrc_mod.midrc_query_runner
 _ = bih_mod.bih_query_runner
 _ = midrc_dl_mod.midrc_download_runner
@@ -407,7 +409,7 @@ async def _render_payload(payload: Dict[str, Any]):
         zip_tmpdir = get_temp_dir(prefix="vi_zip")
         zip_path = zip_tmpdir / "download.zip"
         await _zip_paths(files, zip_path)
-        if tool == "dicom2nifti":
+        if tool in {"dicom2nifti", "dicom2nifti_batch"}:
             output_content = f"**Dicom to Nifti conversion complete:**\n- Nifti Files: {len(files)}\n\nClick to download:"
         elif tool == "tcia_download":
             output_content = f"**TCIA Download complete:**\n- Items: {len(files)}\n\nClick to download:"

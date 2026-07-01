@@ -201,7 +201,7 @@ def _resolve_tools(pipeline: str, tool_names: Optional[List[str]]) -> List[Any]:
         "clinical_data_download",
         "image_registration",
         "merlin_3d",
-        "dicom2nifti",
+        "dicom2nifti_batch",
         "universeg",
     }
     default_idc = {

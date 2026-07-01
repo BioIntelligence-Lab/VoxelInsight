@@ -11,10 +11,12 @@ from tools.shared import toolify_agent, _cs
 BASE_V1 = "https://services.cancerimagingarchive.net/nbia-api/services/v1"
 FALLBACK_V3 = "https://services.cancerimagingarchive.net/services/v3/TCIA/query/getImage"
 
-def _ensure_outdir(root: Optional[str], make_subdir: bool, label: str = "tcia") -> Path:
+def _ensure_outdir(root: Optional[str] = None, make_subdir: bool = False, label: str = "tcia") -> Path:
     base = Path(root) if root else get_run_dir("tcia_download", persist=True)
     base.mkdir(parents=True, exist_ok=True)
-    return base / f"{label}_downloads" if make_subdir else base
+    out_dir = base / f"{label}_downloads" if make_subdir else base
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return out_dir
 
 def _snapshot(dirp: Path) -> set[str]:
     return {str(p) for p in dirp.rglob("*") if p.is_file()} if dirp.exists() else set()
@@ -81,7 +83,7 @@ class TCIADownloadAgent:
         series_uids  = kw.get("series_uids")
         collection   = kw.get("collection")
         output_dir   = kw.get("output_dir")
-        make_subdir  = bool(kw.get("make_subdir", True))
+        make_subdir  = bool(kw.get("make_subdir", False))
         extract_zip  = bool(kw.get("extract_zip", True))
         v3_fallback  = bool(kw.get("v3_fallback", True))
         parallel     = int(kw.get("parallel", 3))
@@ -187,8 +189,6 @@ class TCIADownloadArgs(BaseModel):
     series_uids: Optional[List[str]] = Field(None, description="Multiple SeriesInstanceUIDs")
     collection: Optional[str] = Field(None, description="TCIA collection name (pick first non-empty series)")
 
-    output_dir: Optional[str] = Field(None, description="Output directory")
-    make_subdir: bool = Field(default=True, description="Create subfolder in output_dir")
     extract_zip: bool = Field(default=True, description="Extract ZIPs to series folder")
     v3_fallback: bool = Field(default=True, description="Fallback to v3 getImage if v1 fails")
     parallel: int = Field(default=3, ge=1, le=16, description="Concurrent series downloads")
@@ -205,8 +205,6 @@ async def tcia_download_runner(
     series_uid: Optional[str] = None,
     series_uids: Optional[List[str]] = None,
     collection: Optional[str] = None,
-    output_dir: Optional[str] = None,
-    make_subdir: bool = True,
     extract_zip: bool = True,
     v3_fallback: bool = True,
     parallel: int = 3,
@@ -219,8 +217,8 @@ async def tcia_download_runner(
         "series_uid": series_uid,
         "series_uids": series_uids,
         "collection": collection,
-        "output_dir": output_dir,
-        "make_subdir": make_subdir,
+        "output_dir": None,
+        "make_subdir": False,
         "extract_zip": extract_zip,
         "v3_fallback": v3_fallback,
         "parallel": parallel,

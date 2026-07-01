@@ -8,11 +8,8 @@ import SimpleITK as sitk
 from pydantic import BaseModel, Field
 
 from core.state import Task, TaskResult, ConversationState
+from core.storage import get_run_dir
 from tools.shared import toolify_agent, _cs
-
-# Where to write output registered images & transforms
-OUTDIR = "registration_outputs"
-
 
 # ============================================================
 # Args schema (for toolify_agent + LLM)
@@ -189,7 +186,7 @@ class ImageRegistrationAgent:
                 artifacts={},
             )
 
-        out_root = Path(OUTDIR).expanduser().resolve()
+        out_root = get_run_dir(self.name, persist=True)
 
         try:
             # Offload heavy registration to a worker thread

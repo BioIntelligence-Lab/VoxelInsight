@@ -92,7 +92,6 @@ class RadiomicsArgs(BaseModel):
     image_path: str = Field(..., description="NIfTI image path.")
     mask_paths: Optional[List[str]] = Field(None, description="List of NIfTI masks.")
     featureset: Optional[str] = Field(None, description="Feature set/YAML path.")
-    out_dir: Optional[str] = Field(None, description="Output dir (optional).")
     reasoning_effort: str = Field(
         ...,
         description="Reasoning effort level (select based on task complexity): 'minimal', 'low', 'medium', or 'high'."
@@ -112,7 +111,6 @@ async def radiomics_runner(
     instructions: str, image_path: str,
     mask_paths: Optional[List[str]] = None,
     featureset: Optional[str] = None,
-    out_dir: Optional[str] = None,
     reasoning_effort: str = "medium",
 ):
     if _RAD is None:
@@ -122,6 +120,5 @@ async def radiomics_runner(
         image_path=image_path,
         mask_paths=mask_paths,
         featureset=featureset,
-        out_dir=out_dir,
         reasoning_effort=reasoning_effort,
     )

@@ -291,7 +291,7 @@ async def _render_payload(payload: Dict[str, Any]):
         zip_path = zip_tmpdir / "download.zip"
         await _zip_paths(files, zip_path)
         output_content = f"**Files ready**\n- Items: {len(files)}\n\nClick to download:"
-        if tool == "dicom2nifti":
+        if tool in {"dicom2nifti", "dicom2nifti_batch"}:
             output_content = f"**Dicom to Nifti conversion complete:**\n- Nifti Files: {len(files)}\n\nClick to download:"
         elif tool == "tcia_download":
             output_content = f"**TCIA Download complete:**\n- Items: {len(files)}\n\nClick to download:"

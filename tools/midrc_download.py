@@ -6,10 +6,10 @@ import tempfile
 import chainlit as cl
 
 from core.state import Task, TaskResult, ConversationState
+from core.storage import get_run_dir
 
 CRED_PATH = os.getenv("MIDRC_CRED", "~/midrc_credentials.json")
 ENDPOINT  = "data.midrc.org"                                   
-DEFAULT_OUTDIR = "midrc_downloads"                             
 
 
 class MIDRCDownloadAgent:
@@ -20,7 +20,7 @@ class MIDRCDownloadAgent:
         kw = task.kwargs or {}
         object_id   = kw.get("object_id")
         object_ids  = kw.get("object_ids")
-        output_dir  = kw.get("output_dir") or DEFAULT_OUTDIR
+        output_dir  = kw.get("output_dir")
         timeout_s   = int(kw.get("timeout_s", 3600))
         parallel    = int(kw.get("parallel", 2))
 
@@ -44,7 +44,11 @@ class MIDRCDownloadAgent:
                     return TaskResult(output=f"Cred file not found at {credp}")
 
                 # ensure output dir
-                out_root = Path(output_dir).expanduser().resolve()
+                out_root = (
+                    Path(output_dir).expanduser().resolve()
+                    if output_dir
+                    else get_run_dir(self.name, persist=True)
+                )
                 out_root.mkdir(parents=True, exist_ok=True)
 
                 # gather ids
@@ -138,7 +142,6 @@ def configure_midrc_download_tool():
 class MIDRCDownloadArgs(BaseModel):
     object_id: Optional[str] = Field(None, description="Single DRS object GUID.")
     object_ids: Optional[List[str]] = Field(None, description="Multiple DRS object GUIDs.")
-    output_dir: Optional[str] = Field(None, description=f"Download directory. Defaults to '{DEFAULT_OUTDIR}'.")
     timeout_s: int = Field(default=3600, ge=30, description="Overall timeout seconds.")
     parallel: int = Field(default=2, ge=1, le=16, description="Max concurrent pulls when object_ids is used.")
 
@@ -151,7 +154,6 @@ class MIDRCDownloadArgs(BaseModel):
 async def midrc_download_runner(
     object_id: Optional[str] = None,
     object_ids: Optional[List[str]] = None,
-    output_dir: Optional[str] = None,
     timeout_s: int = 3600,
     parallel: int = 2,
 ):
@@ -161,7 +163,7 @@ async def midrc_download_runner(
     kwargs = {
         "object_id": object_id,
         "object_ids": object_ids,
-        "output_dir": output_dir,
+        "output_dir": None,
         "timeout_s": timeout_s,
         "parallel": parallel,
     }

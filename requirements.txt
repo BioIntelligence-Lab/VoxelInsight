@@ -14,6 +14,7 @@ langchain-community==0.3.31
 langchain-text-splitters==1.1.2
 langgraph==1.1.10
 langgraph-prebuilt==1.0.13
+langgraph-checkpoint-sqlite==3.1.0
 deepagents==0.5.7
 llama_index
 chainlit>=1.1
@@ -26,7 +27,7 @@ dicom2nifti
 supabase
 python-dotenv
 flask
-idc_index
+idc-index>=0.12.3,<0.13
 ipywidgets
 pathlib
 regex

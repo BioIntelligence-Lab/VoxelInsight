@@ -6,9 +6,11 @@ import pandas as pd
 from idc_index import IDCClient
 from pydantic import BaseModel, Field
 
+from core.agents.artifacts import safe_slug
 from core.storage import get_run_dir
 from core.state import TaskResult
 from tools.shared import toolify_agent
+from tools.tabular_metadata import demographic_metadata, table_schema
 
 
 class ClinicalDataArgs(BaseModel):
@@ -72,12 +74,8 @@ def _available_tables_for_collection(collection_id: str) -> List[str]:
         "\nWhen the user requests downloads of DICOM series, histopathology tiles, or clinical data, use the respective download tools (`idc_download`, `pathology_download`, `clinical_data_download`)."
         "\n- `clinical_data_download`: download IDC clinical data by collection using idc_index (no BigQuery). Optionally select fields and/or filter on a field value."
         "\n- Use this tool to download clinical data tables from IDC for patients of interest."
-        "\n- ALWAYS First, use the 'idc_query' tool to identify the right collection based on partial names, complete names, or descriptions. Your first job is to get the closest matching collection name."
-        "\n- You cannot use this tool without first identifying the correct collection using the `idc_query` tool."
-        "\n- Once you have the right collection, use this tool to download the clinical data for patients in that collection."
-        "\n- Always ensure that you have the correct collection name before using this tool."
-        "\n- If idc_query returns no results for a collection, inform the user that you cannot complete the task."
-        "\n- If multiple collections are found from idc_query, ask the user to clarify which one they want before proceeding."
+        "\n- When an exact collection_id is supplied, use it directly without running a separate collection lookup."
+        "\n- Collection discovery for partial names or descriptions must be completed before calling this tool."
     ),
     args_schema=ClinicalDataArgs,
     timeout_s=180,
@@ -96,44 +94,99 @@ async def clinical_data_download_runner(
     if not tables:
         raise ValueError(f"No clinical tables found for collection '{collection_id}'.")
 
-    frames: List[pd.DataFrame] = []
+    loaded_tables: List[tuple[str, pd.DataFrame]] = []
     for tbl in tables:
         try:
-            df_tbl = _CLIENT.get_clinical_table(tbl)
-            df_tbl["__source_table"] = tbl
-            frames.append(df_tbl)
+            df_tbl = _CLIENT.get_clinical_table(tbl).copy()
+            loaded_tables.append((str(tbl), df_tbl))
         except Exception as e:
             raise RuntimeError(f"Failed to load clinical table '{tbl}': {e}")
 
-    if not frames:
+    if not loaded_tables:
         raise RuntimeError(f"Clinical tables for '{collection_id}' could not be loaded.")
 
-    df = pd.concat(frames, ignore_index=True)
+    available_fields = {
+        str(column)
+        for _table_name, dataframe in loaded_tables
+        for column in dataframe.columns
+    }
 
     if filter_field:
-        if filter_field not in df.columns:
+        if filter_field not in available_fields:
             raise ValueError(f"Field '{filter_field}' not found in clinical data.")
-        if filter_value is not None:
-            df = df[df[filter_field] == filter_value]
 
     if fields:
-        missing = [f for f in fields if f not in df.columns]
+        missing = [f for f in fields if f not in available_fields]
         if missing:
             raise ValueError(f"Requested fields missing: {', '.join(missing)}")
-        df = df[fields]
-
-    df = df.head(limit_rows)
 
     out_root = get_run_dir("clinical_data_download", persist=True)
-    csv_path = out_root / f"{collection_id}_clinical.csv"
-    df.to_csv(csv_path, index=False)
+    table_data = []
+    table_metadata = []
+    csv_paths: List[str] = []
+    remaining_rows = int(limit_rows)
+    for table_name, source_dataframe in loaded_tables:
+        dataframe = source_dataframe
+        if filter_field:
+            if filter_field not in dataframe.columns:
+                continue
+            if filter_value is not None:
+                dataframe = dataframe[dataframe[filter_field] == filter_value]
+        if fields:
+            selected_fields = [field for field in fields if field in dataframe.columns]
+            if not selected_fields:
+                continue
+            dataframe = dataframe[selected_fields]
 
-    summary = f"Clinical data downloaded via idc_index: collection={collection_id}, rows={len(df)}, columns={len(df.columns)}"
+        source_rows = int(len(dataframe))
+        dataframe = dataframe.head(remaining_rows).copy()
+        remaining_rows -= len(dataframe)
+        if dataframe.empty and source_rows:
+            break
+
+        csv_path = out_root / f"{safe_slug(table_name, 'clinical-table')}.csv"
+        dataframe.to_csv(csv_path, index=False)
+        csv_paths.append(str(csv_path))
+        demographics = demographic_metadata(dataframe)
+        schema = table_schema(dataframe)
+        metadata = {
+            "source_table": table_name,
+            "source_rows": source_rows,
+            "returned_rows": int(len(dataframe)),
+            "column_count": int(len(dataframe.columns)),
+            "schema": schema,
+            "demographic_fields": demographics,
+        }
+        table_metadata.append(metadata)
+        table_data.append(
+            {
+                "name": table_name,
+                "dataframe": dataframe,
+                "artifact_path": str(csv_path),
+                "visibility": "user",
+                "metadata": metadata,
+            }
+        )
+        if remaining_rows <= 0:
+            break
+
+    if not table_data:
+        raise RuntimeError(
+            f"Clinical tables for '{collection_id}' contained no rows after filtering."
+        )
+
+    total_rows = sum(int(item["returned_rows"]) for item in table_metadata)
+    summary = (
+        "Clinical data downloaded via idc_index: "
+        f"collection={collection_id}, tables={len(table_data)}, rows={total_rows}"
+    )
     outputs = {
         "text": summary,
         "tool": "clinical_data_download",
-        "df_preview": {"rows": df.head(50).to_dict("records"), "nrows": len(df)},
-        "output_dir": str(out_root),
+        "collection_id": collection_id,
+        "source_tables": [item["source_table"] for item in table_metadata],
+        "tables": table_metadata,
+        "table_data": table_data,
     }
-    artifacts = {"files": [str(csv_path)], "output_dir": str(out_root)}
+    artifacts = {"files": csv_paths}
     return TaskResult(output=outputs, artifacts=artifacts)

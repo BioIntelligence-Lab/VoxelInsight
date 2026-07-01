@@ -30,7 +30,7 @@ Instructions:
 - The run_monai_bundle function may not work with every bundle. In these cases create your own function. Always make sure the function you create as as similar as possible to the provided run_monai_bundle function, only including necessary changes.
 - If you cannot proceed (e.g., missing image), still assign a string to res_query describing the issue.
 - If you're outputing a mask, make sure it is in the (H,W,D) format. You are provided with the _normalize_to_HWD(x) to do this, but you may create your own functions if necessary.
-- Do not make temorary directories, instead use tempfile.mkdtemp(...)
+- Save generated files under the provided `OUT_DIR`. Do not create or choose your own output root.
  - Always validate image dimensionality and set channel-first accordingly
     - “Read the image’s array shape (via nibabel).
     - If the data has 3 dims (H,W,D) and no channel, set auto_channel_first=True and channel_dim=-1.
@@ -46,7 +46,7 @@ Return a structured result so downstream viz/orchestrator can consume:
      "action": "inference",
      "bundle_dir": bundle_dir,
      "image_path": image_path,
-     "output_dir": tmpdir,            # where you saved files
+     "output_dir": OUT_DIR,           # where you saved files
      "segmentations": segmentations    # list[str], may be empty if nothing to save
    }
 
@@ -56,6 +56,7 @@ ENVIRONMENT you have access to:
 run_monai_bundle,
 _normalize_to_HWD(x),
 _save_pred_as_nifti,
+OUT_DIR,
 
 run_monai_bundle function code (this function is available in the local environment and can be used directly): 
 

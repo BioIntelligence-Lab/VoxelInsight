@@ -226,7 +226,6 @@ def configure_monai_tool(*, system_prompt: str, additional_context: str):
 class MonaiArgs(BaseModel):
     instructions: str = Field(..., description="Natural language instruction for running the bundle.")
     image_paths: Union[str, List[str]] = Field(..., description="NIfTI image path/s to run inference on. String or list of strings.")
-    out_dir: Optional[str] = Field(None, description="Output directory; defaults to a temp dir.")
 
 @toolify_agent(
     name="monai",
@@ -242,7 +241,6 @@ class MonaiArgs(BaseModel):
 async def monai_runner(
     instructions: str,
     image_paths: str,
-    out_dir: Optional[str] = None,
 ):
     if _MONAI is None:
         raise RuntimeError(
@@ -251,5 +249,4 @@ async def monai_runner(
     return await _MONAI.run(
         instructions=instructions,
         image_paths=image_paths,
-        out_dir=out_dir,
     )

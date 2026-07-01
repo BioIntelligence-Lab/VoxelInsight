@@ -265,14 +265,20 @@ class VizSliderArgs(BaseModel):
     image_path: Optional[str] = Field(
         default=None, description="Path to NIfTI image (.nii/.nii.gz). If omitted, uses state.memory['image_path']."
     )
-    image_array: Optional[Any] = Field(
-        default=None, description="3D/4D numpy-like array (H,W,Z or H,W,Z,C). If provided, overrides image_path."
+    image_array: Optional[List[List[List[float]]]] = Field(
+        default=None,
+        description=(
+            "Programmatic 3D image array (H,W,Z). Prefer image_path for LLM calls; large arrays should not be passed."
+        ),
     )
     mask_paths: Optional[List[str]] = Field(
         default=None, description="List of NIfTI mask paths. Can be binary or labelmaps."
     )
-    mask_arrays: Optional[List[Any]] = Field(
-        default=None, description="List of numpy-like mask volumes (H,W,Z). Binary or labelmaps."
+    mask_arrays: Optional[List[List[List[List[float]]]]] = Field(
+        default=None,
+        description=(
+            "Programmatic list of 3D mask arrays, each shaped (H,W,Z). Prefer mask_paths for LLM calls."
+        ),
     )
     alpha: float = Field(default=0.4, description="Overlay opacity for masks (0–1).")
     cmaps: Optional[List[str]] = Field(

@@ -248,7 +248,6 @@ class UniversegArgs(BaseModel):
     max_support_slices: int   = Field(3, ge=1, le=32, description="Max 2D slices sampled across support volumes.")
     threshold: float          = Field(0.5, ge=0.0, le=1.0, description="Probability threshold for binarizing masks.")
     resize_to: Optional[List[int]] = Field(default=list(DEFAULT_SIZE), description="2D resize [H, W] used by the model.")
-    output_dir: Optional[str] = Field(None, description="Optional output dir; defaults to a temp run dir.")
 
 @toolify_agent(
     name="universeg",
@@ -267,7 +266,6 @@ async def universeg_runner(
     max_support_slices: int = 3,
     threshold: float = 0.5,
     resize_to: Optional[List[int]] = None,
-    output_dir: Optional[str] = None,
 ):
     size = tuple(resize_to) if (resize_to and len(resize_to) == 2) else DEFAULT_SIZE
     return await _UG.run(
@@ -277,5 +275,4 @@ async def universeg_runner(
         max_support_slices=max_support_slices,
         threshold=threshold,
         resize_to=size,
-        output_dir=output_dir,
     )

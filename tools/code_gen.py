@@ -11,6 +11,7 @@ from core.utils import extract_code_block
 from core.sandbox import run_user_code
 from core.state import TaskResult 
 from core.llm_provider import choose_llm
+from core.storage import get_run_dir
 
 from tools.shared import toolify_agent  
 
@@ -30,15 +31,16 @@ class CodeExecTool:
 
         files = files or []
         mask_paths = mask_paths or []
+        out_dir = str(get_run_dir(self.name, persist=True))
 
-        runtime_ctx = {
-            "ARGS": {
-                "instructions": instructions,
-                "files": files,
-                "image_path": image_path,
-                "mask_paths": mask_paths,
-            }
+        runtime_args = {
+            "instructions": instructions,
+            "files": files,
+            "image_path": image_path,
+            "mask_paths": mask_paths,
+            "out_dir": out_dir,
         }
+        runtime_ctx = {"ARGS": runtime_args}
 
         messages = [
             {"role": "system", "content": self.system_prompt},
@@ -61,9 +63,11 @@ class CodeExecTool:
             "nib": nib,
             "pydicom": pydicom,
             "df_IDC": self.df_IDC, 
+            "ARGS": runtime_args,
             "FILES": files,
             "IMAGE_PATH": image_path,
             "MASK_PATHS": mask_paths,
+            "OUT_DIR": out_dir,
         }
 
         out = run_user_code(code, local_env)
