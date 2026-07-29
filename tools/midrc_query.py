@@ -13,7 +13,7 @@ CRED_PATH = os.getenv("MIDRC_CRED", "~/midrc_credentials.json")
 
 class MIDRCQueryAgent:
     name = "midrc_query"
-    model = "gpt-5-mini"
+    model = "gpt-5.6-terra"
 
     def __init__(self, df_MIDRC: pd.DataFrame, system_prompt: str):
         self.df_MIDRC = df_MIDRC

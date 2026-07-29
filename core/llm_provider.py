@@ -14,7 +14,7 @@ except Exception:
 
 @dataclass
 class OpenAISettings:
-    model: str = "gpt-5"
+    model: str = "gpt-5.6-sol"
     temperature: float = 1
     reasoning_effort: Optional[str] = "medium"
     extra: Dict[str, Any] = field(default_factory=dict)
@@ -63,7 +63,7 @@ class LLMClient:
 
         if self.provider == "openai":
             payload = {
-                "model": getattr(self.settings, "model", "gpt-5"),
+                "model": getattr(self.settings, "model", "gpt-5.6-sol"),
                 "temperature": target_temp,
                 "messages": normalized,
             }

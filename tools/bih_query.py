@@ -12,7 +12,7 @@ from core.llm_provider import choose_llm
 
 class BIHQueryAgent:
     name = "bih_query"
-    model = "gpt-5"
+    model = "gpt-5.6-sol"
 
     def __init__(self, df_BIH: pd.DataFrame, system_prompt: str):
         self.df_BIH = df_BIH

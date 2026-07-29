@@ -85,7 +85,7 @@ def run_monai_bundle(
 
 class MONAIAgent:
     name = "monai"
-    model = "gpt-5"  
+    model = "gpt-5.6-sol"
 
     def __init__(self, system_prompt: str, additional_context: str):
         self.system_prompt = system_prompt

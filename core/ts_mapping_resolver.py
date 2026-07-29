@@ -12,7 +12,7 @@ from langchain_openai import ChatOpenAI
 class TSMappingResolver:
     def __init__(self) -> None:
         self.allowed_by_task = self._load_mappings()
-        self._llm = ChatOpenAI(model="gpt-5-nano", temperature=0, reasoning_effort="low")
+        self._llm = ChatOpenAI(model="gpt-5.6-luna", temperature=0, reasoning_effort="low")
 
     @staticmethod
     def _normalize_token(text: str) -> str:
@@ -120,4 +120,3 @@ class TSMappingResolver:
             f"rois: {requested_rois} -> {resolved_rois}"
         )
         return updated, resolution_note
-

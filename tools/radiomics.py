@@ -16,7 +16,7 @@ from tools.shared import toolify_agent
 
 class RadiomicsAgent:
     name = "radiomics"
-    model = "gpt-5-nano" 
+    model = "gpt-5.6-luna"
 
     def __init__(self, system_prompt: str):
         self.system_prompt = system_prompt

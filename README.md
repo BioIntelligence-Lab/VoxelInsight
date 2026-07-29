@@ -1,6 +1,6 @@
 # 🧠 VoxelInsight
 
-**VoxelInsight** is a conversational AI assistant for biomedical imaging that bridges large-scale data repositories and advanced image analysis tools — all through natural language. Built with Chainlit and OpenAI’s GPT-5, VoxelInsight turns plain English into powerful radiology workflows.
+**VoxelInsight** is a conversational AI assistant for biomedical imaging that bridges large-scale data repositories and advanced image analysis tools — all through natural language. Built with Chainlit and OpenAI’s GPT-5.6 family, VoxelInsight turns plain English into powerful radiology workflows.
 
 ---
 

@@ -69,7 +69,7 @@ DOMAIN_SUBAGENT_TOOL_NAMES: Dict[str, tuple[str, ...]] = {
         "idc_collection_profile",
         "idc_clinical_catalog",
         "idc_sql_query",
-        "idc_python_query",
+        "execute_idc_python",
     ),
     "cohort-agent": (
         "idc_query",
@@ -115,8 +115,8 @@ ALL_TOOLS: tuple[BaseTool, ...] = ()
 TOOL_NAMES: Dict[str, BaseTool] = {}
 TOP_LEVEL_TOOLS: List[BaseTool] = []
 
-DEFAULT_DEEPAGENT_SUPERVISOR_MODEL = "gpt-5-mini"
-DEFAULT_DEEPAGENT_SUBAGENT_MODEL = "gpt-5-nano"
+DEFAULT_DEEPAGENT_SUPERVISOR_MODEL = "gpt-5.6-terra"
+DEFAULT_DEEPAGENT_SUBAGENT_MODEL = "gpt-5.6-luna"
 DEEPAGENT_SUPERVISOR_MODEL_ENV = "DEEPAGENT_SUPERVISOR_LLM_MODEL"
 DEEPAGENT_SUBAGENT_MODEL_ENV = "DEEPAGENT_SUBAGENT_LLM_MODEL"
 IDC_SKILL_SOURCE = "/skills/idc/"
@@ -639,9 +639,12 @@ Tool hierarchy
    their typed use cases.
 3. Use idc_sql_query for read-only aggregations/joins not covered by a typed tool. Supply
    expected_columns and validate the returned schema.
-4. Use idc_python_query only as a last resort for multi-step local transformations that
-   cannot be expressed with typed tools or read-only SQL. It has no imports, filesystem,
-   arbitrary network, dynamic execution, or download capability and must assign `result`.
+4. When typed tools and read-only SQL cannot express a multi-step local transformation,
+   write the restricted Python yourself and pass it to execute_idc_python as a last resort.
+   The execution tool does not generate or repair code. It has prebound `client`, `pd`, `np`,
+   and `math`, but no imports, filesystem, arbitrary network, dynamic execution, or download
+   capability. Direct client SQL is also unavailable; use idc_sql_query for SQL. The code
+   must assign its final value to `result`.
 - Never call the legacy idc_query tool; it is deliberately not available to you.
 - Use idc_series_category_summary, not idc_series_search, for counts or plots grouped by
   SeriesDescription, StudyDescription, BodyPartExamined, or Modality. Raw series search

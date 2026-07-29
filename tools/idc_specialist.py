@@ -1171,12 +1171,14 @@ async def idc_sql_query_runner(sql: str, expected_columns: str, max_rows: int) -
     return _result(frame, query=query, tables=tables, expected_columns=expected)
 
 
-class IDCPythonQueryArgs(BaseModel):
+class ExecuteIDCPythonArgs(BaseModel):
     code: str = Field(
         ...,
         description=(
-            "Restricted Python with prebound client, pd, np, and math. No imports or file access. "
-            "Assign the final JSON-serializable or pandas value to result."
+            "Restricted Python authored by the IDC subagent, with prebound client, pd, np, and "
+            "math. No imports, file access, arbitrary network, downloads, or dynamic execution. "
+            "Direct SQL execution is not available; use idc_sql_query for SQL. Assign the final "
+            "JSON-serializable or pandas value to result."
         ),
     )
     expected_columns: str = Field(..., description="JSON array of required DataFrame columns, or [] if none.")
@@ -1185,16 +1187,19 @@ class IDCPythonQueryArgs(BaseModel):
 
 
 @toolify_agent(
-    name="idc_python_query",
+    name="execute_idc_python",
     description=(
-        "Last-resort restricted IDC Python execution for multi-step local metadata transformations "
-        "that typed tools and read-only SQL cannot express. Runs in a resource-limited subprocess; "
-        "imports, filesystem access, dynamic execution, private attributes, and download methods are blocked."
+        "Execute restricted Python written directly by the IDC subagent as a last resort for "
+        "multi-step local metadata transformations that typed tools and read-only SQL cannot "
+        "express. This tool only validates and executes supplied code; it does not generate code. "
+        "It runs in a resource-limited subprocess where imports, filesystem access, arbitrary "
+        "network, direct SQL, dynamic execution, private attributes, and download methods are "
+        "blocked."
     ),
-    args_schema=IDCPythonQueryArgs,
+    args_schema=ExecuteIDCPythonArgs,
     timeout_s=75,
 )
-async def idc_python_query_runner(
+async def execute_idc_python_runner(
     code: str,
     expected_columns: str,
     max_rows: int,

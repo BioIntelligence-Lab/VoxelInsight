@@ -9,7 +9,7 @@ from core.storage import get_run_dir
 
 class DataQueryAgent:
     name = "idc_query"
-    model = "gpt-5-mini"
+    model = "gpt-5.6-terra"
 
     def __init__(self, df_IDC: pd.DataFrame, df_BIH: pd.DataFrame, system_prompt: str):
         self.df_IDC = df_IDC

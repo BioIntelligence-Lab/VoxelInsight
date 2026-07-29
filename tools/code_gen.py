@@ -17,7 +17,7 @@ from tools.shared import toolify_agent
 
 class CodeExecTool:
     name = "code_gen"
-    model = "gpt-5"
+    model = "gpt-5.6-sol"
 
     def __init__(self, system_prompt: str, df_IDC: Optional[pd.DataFrame] = None):
         self.system_prompt = system_prompt

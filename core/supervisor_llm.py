@@ -24,7 +24,7 @@ except Exception:
 
 @dataclass
 class OpenAISupervisorSettings:
-    model: str = "gpt-5-nano"
+    model: str = "gpt-5.6-luna"
     temperature: float = 1.0
     reasoning_effort: Optional[str] = "low"
     extra: Dict[str, Any] = field(default_factory=dict)
@@ -72,6 +72,7 @@ def build_supervisor_llm(
             "model": model_override or os.getenv("SUPERVISOR_LLM_MODEL") or settings.model,
             "temperature": temperature if temperature is not None else settings.temperature,
             "reasoning_effort": reasoning_effort if reasoning_effort is not None else settings.reasoning_effort,
+            "use_responses_api": True,
         }
         if settings.extra:
             kwargs.update(settings.extra)

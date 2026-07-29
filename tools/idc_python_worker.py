@@ -58,12 +58,15 @@ _SAFE_BUILTIN_CALLS = {
     "dict",
     "enumerate",
     "float",
+    "frozenset",
     "int",
+    "isinstance",
     "len",
     "list",
     "max",
     "min",
     "range",
+    "reversed",
     "round",
     "set",
     "sorted",
@@ -79,7 +82,27 @@ _SAFE_CLIENT_CALLS = {
     "get_idc_version",
     "get_index_schema",
     "get_viewer_URL",
-    "sql_query",
+}
+
+_SAFE_CLIENT_ATTRIBUTES = _SAFE_CLIENT_CALLS | {
+    "analysis_results_index",
+    "ann_group_index",
+    "ann_index",
+    "clinical_index",
+    "collections_index",
+    "contrast_index",
+    "ct_index",
+    "index",
+    "indices_overview",
+    "mr_index",
+    "prior_versions_index",
+    "pt_index",
+    "rtstruct_index",
+    "seg_index",
+    "sm_index",
+    "sm_instance_index",
+    "version_metadata_index",
+    "volume_geometry_index",
 }
 
 _SAFE_LIBRARY_CALLS = {
@@ -87,14 +110,42 @@ _SAFE_LIBRARY_CALLS = {
     "Series",
     "array",
     "asarray",
+    "average",
+    "corrcoef",
     "concat",
     "crosstab",
+    "cut",
+    "factorize",
+    "hstack",
+    "isfinite",
     "isna",
     "isnan",
+    "json_normalize",
+    "mean",
+    "median",
+    "melt",
+    "merge",
     "notna",
+    "percentile",
+    "pivot_table",
+    "qcut",
+    "quantile",
+    "sort",
+    "stack",
+    "std",
     "to_datetime",
     "to_numeric",
+    "unique",
+    "var",
+    "vstack",
     "where",
+}
+
+_SAFE_LIBRARY_ATTRIBUTES = _SAFE_LIBRARY_CALLS | {
+    "NA",
+    "NaT",
+    "inf",
+    "nan",
 }
 
 _SAFE_MATH_CALLS = {
@@ -107,58 +158,115 @@ _SAFE_MATH_CALLS = {
     "isnan",
     "log",
     "log10",
+    "prod",
     "sqrt",
 }
+
+_SAFE_MATH_ATTRIBUTES = _SAFE_MATH_CALLS | {"e", "inf", "nan", "pi"}
 
 _SAFE_OBJECT_METHODS = {
     "agg",
     "aggregate",
     "all",
     "any",
+    "append",
     "astype",
+    "assign",
     "between",
     "clip",
     "contains",
     "copy",
+    "corr",
     "count",
+    "cov",
+    "describe",
     "drop",
     "drop_duplicates",
     "dropna",
+    "duplicated",
     "endswith",
+    "explode",
+    "extract",
+    "factorize",
     "fillna",
     "first",
+    "get",
     "groupby",
     "head",
+    "iterrows",
+    "itertuples",
     "isin",
+    "isna",
+    "items",
     "join",
+    "keys",
     "last",
     "lower",
     "map",
     "max",
     "mean",
     "median",
+    "melt",
     "merge",
     "min",
+    "mode",
+    "nlargest",
+    "notna",
+    "nsmallest",
     "nunique",
     "pivot",
     "pivot_table",
+    "quantile",
+    "rank",
+    "reindex",
     "rename",
     "replace",
     "reset_index",
     "round",
+    "select_dtypes",
+    "set_index",
     "size",
     "sort_index",
     "sort_values",
+    "split",
+    "stack",
     "startswith",
+    "std",
     "strip",
     "sum",
     "tail",
     "to_dict",
+    "to_frame",
+    "to_numpy",
     "tolist",
     "unique",
+    "unstack",
     "upper",
+    "values",
     "value_counts",
+    "var",
 }
+
+_BLOCKED_ATTRIBUTE_REFERENCES = {
+    "citations_from_selection",
+    "download_dicom_series",
+    "download_from_selection",
+    "eval",
+    "get_series_file_URLs",
+    "pipe",
+    "plot",
+    "query",
+}
+
+_SAFE_LOCAL_CONVERSION_METHODS = {"to_dict", "to_frame", "to_numpy", "tolist"}
+
+
+def _is_blocked_attribute(name: str) -> bool:
+    return (
+        name in _BLOCKED_ATTRIBUTE_REFERENCES
+        or name.startswith(("download_", "read_"))
+        or (name.startswith("to_") and name not in _SAFE_LOCAL_CONVERSION_METHODS)
+    )
 
 
 def _root_name(node: ast.AST) -> str:
@@ -191,6 +299,17 @@ def validate_restricted_idc_code(code: str) -> ast.Module:
                 assigned_names.add(node.id)
         if isinstance(node, ast.Attribute) and node.attr.startswith("_"):
             raise ValueError("Private and dunder attributes are not allowed.")
+        if isinstance(node, ast.Attribute):
+            if _is_blocked_attribute(node.attr):
+                raise ValueError(f"Attribute {node.attr!r} is not allowed.")
+            if isinstance(node.value, ast.Name):
+                root = node.value.id
+                if root == "client" and node.attr not in _SAFE_CLIENT_ATTRIBUTES:
+                    raise ValueError(f"IDCClient attribute {node.attr!r} is not allowed.")
+                if root in {"pd", "np"} and node.attr not in _SAFE_LIBRARY_ATTRIBUTES:
+                    raise ValueError(f"Library attribute {root}.{node.attr} is not allowed.")
+                if root == "math" and node.attr not in _SAFE_MATH_ATTRIBUTES:
+                    raise ValueError(f"Math attribute math.{node.attr} is not allowed.")
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name):
                 if node.func.id not in _SAFE_BUILTIN_CALLS:
@@ -255,12 +374,15 @@ def _safe_builtins() -> dict[str, Any]:
         "dict": dict,
         "enumerate": enumerate,
         "float": float,
+        "frozenset": frozenset,
         "int": int,
+        "isinstance": isinstance,
         "len": len,
         "list": list,
         "max": max,
         "min": min,
         "range": range,
+        "reversed": reversed,
         "round": round,
         "set": set,
         "sorted": sorted,
