@@ -1,8 +1,8 @@
 import os, json, pathlib, zipfile, tempfile, time, requests, asyncio
 from typing import Optional, List, Dict, Any
 from pathlib import Path
-import chainlit as cl
 
+from core.interactions import confirm_operation, notify_user
 from core.state import Task, TaskResult, ConversationState
 from core.storage import get_run_dir
 from pydantic import BaseModel, Field
@@ -90,16 +90,18 @@ class TCIADownloadAgent:
         overwrite    = bool(kw.get("overwrite", False))
         throttle_s   = float(kw.get("throttle_s", 0.0))
 
-        res = await cl.AskActionMessage(
+        confirmed = await confirm_operation(
+            kind="tcia_download",
             content="Would you like to download files from TCIA now?",
-            actions=[
-                cl.Action(name="continue", payload={"value": "continue"}, label="✅ Continue"),
-                cl.Action(name="cancel", payload={"value": "cancel"}, label="❌ Cancel"),
-            ],
-        ).send()
+            details={
+                "series_uid": series_uid,
+                "series_count": len(series_uids or []),
+                "collection": collection,
+            },
+        )
 
-        if res and res.get("payload").get("value") == "continue":
-            await cl.Message(content="Starting TCIA download...",).send()
+        if confirmed:
+            await notify_user("Starting TCIA download...")
 
             try:
                 out_root = _ensure_outdir(output_dir, make_subdir, label="tcia")
@@ -170,13 +172,9 @@ class TCIADownloadAgent:
             except Exception as e:
                 return TaskResult(output=f"TCIADownload error: {e}")
             
-        elif res and res.get("payload").get("value") == "cancel":
-            await cl.Message(content="TCIA download cancelled.").send()
-            return TaskResult(output="TCIA download was cancelled by the user via the UI. DO NOT REPEAT without checking with user again if needed.", artifacts={})
-        
         else:
-            await cl.Message(content="No response received. TCIA download cancelled.").send()
-            return TaskResult(output="TCIA download was cancelled by the user via the UI. DO NOT REPEAT without checking with user again if needed.", artifacts={})
+            await notify_user("TCIA download cancelled.")
+            return TaskResult(output="TCIA download was cancelled. DO NOT REPEAT without checking with the user again if needed.", artifacts={})
 
 _TCIA: Optional[TCIADownloadAgent] = None
 

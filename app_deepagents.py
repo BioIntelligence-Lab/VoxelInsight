@@ -4,7 +4,6 @@ import shutil
 import json
 import sys
 import hashlib
-import uuid
 import re
 from pathlib import Path
 from typing import Dict, Optional, List, Any
@@ -20,23 +19,22 @@ from chainlit.types import ThreadDict
 import pandas as pd
 
 from langchain_core.messages import (
-    HumanMessage,
     AIMessage,
     ToolMessage,
     AIMessageChunk,
 )
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.runnables.config import RunnableConfig
-
-from core.agents.deep_voxelinsight import DOMAIN_SUBAGENT_TOOL_NAMES, get_voxelinsight_graph
+from core.agents.deep_voxelinsight import DOMAIN_SUBAGENT_TOOL_NAMES
 from core.agents.artifacts import (
-    artifact_from_path,
-    dump_model,
     registry_delta_from_payload,
     safe_slug,
 )
-from core.agents.checkpointing import seed_registry_from_child_checkpoints
-from core.agents.durable_registry import load_registry_delta
+from core.agents.run_turn import execute_turn, extract_stream_part
+from core.interactions import (
+    ConfirmationRequest,
+    InteractionHandler,
+    interaction_context,
+)
 from core.agents.visibility import (
     infer_requested_deliverables,
     validate_deliverables,
@@ -44,60 +42,6 @@ from core.agents.visibility import (
 from core.agents.external_links import idc_viewer_urls_from_rows
 from core.storage import get_run_dir, get_temp_dir
 from progress_ui import set_progress_queue, update_progress
-
-
-def build_initial_agent_state(user_message: str, uploaded_files: List[str]) -> Dict[str, Any]:
-    """Build graph input while keeping uploads structured and visible to the model."""
-    run_id = f"run-{uuid.uuid4().hex}"
-    artifact_registry: Dict[str, Dict[str, Any]] = {}
-    for uploaded_file in uploaded_files:
-        artifact, _error = artifact_from_path(
-            uploaded_file,
-            key="uploaded_file",
-            source_tool="user_upload",
-            run_id=run_id,
-            role="input",
-            kind="upload",
-            downloadable=False,
-        )
-        if artifact:
-            artifact_registry[artifact.artifact_id] = dump_model(artifact)
-
-    state: Dict[str, Any] = {
-        "messages": [HumanMessage(content=user_message)],
-        "uploaded_files": uploaded_files,
-        "artifact_registry": artifact_registry,
-        "data_registry": {},
-        "tool_events": [],
-        "current_run_id": run_id,
-        "current_user_request": user_message,
-        "requested_deliverables": infer_requested_deliverables(user_message),
-    }
-    return state
-
-
-def merge_registry_delta_into_state(
-    state: Dict[str, Any],
-    delta: Dict[str, Any],
-) -> Dict[str, Any]:
-    """Merge durable tool records into the next root-graph input."""
-
-    merged = dict(state)
-    artifacts = dict(delta.get("artifact_registry") or {})
-    artifacts.update(merged.get("artifact_registry") or {})
-    data = dict(delta.get("data_registry") or {})
-    data.update(merged.get("data_registry") or {})
-    events_by_id: Dict[str, Dict[str, Any]] = {}
-    for event in [*(delta.get("tool_events") or []), *(merged.get("tool_events") or [])]:
-        if not isinstance(event, dict):
-            continue
-        event_id = str(event.get("event_id") or "")
-        if event_id:
-            events_by_id[event_id] = event
-    merged["artifact_registry"] = artifacts
-    merged["data_registry"] = data
-    merged["tool_events"] = list(events_by_id.values())
-    return merged
 
 
 def _select_nonoverlapping_artifact_records(
@@ -138,56 +82,6 @@ def _select_nonoverlapping_artifact_records(
     return selected_files + [record for _path, record in selected_directories]
 
 
-def registry_payload_for_run(state: Dict[str, Any], run_id: str) -> Dict[str, Any]:
-    """Return the current run's renderable records from authoritative graph state."""
-    artifacts = [
-        record
-        for record in (state.get("artifact_registry") or {}).values()
-        if isinstance(record, dict) and str(record.get("run_id") or "") == run_id
-    ]
-    data = [
-        record
-        for record in (state.get("data_registry") or {}).values()
-        if isinstance(record, dict) and str(record.get("run_id") or "") == run_id
-    ]
-    ui: List[Dict[str, Any]] = []
-    for record in artifacts:
-        kind = str(record.get("kind") or "")
-        role = str(record.get("role") or "")
-        if kind not in {"image", "plotly", "binary"} or role != "visualization":
-            continue
-        ui.append(
-            {
-                "kind": (
-                    "plotly_json_path"
-                    if kind == "plotly"
-                    else "image_path"
-                    if kind == "image"
-                    else "binary_path"
-                ),
-                "path": record.get("path"),
-                "title": record.get("name") or kind,
-                "artifact_id": record.get("artifact_id"),
-            }
-        )
-    return {
-        "schema_version": "voxelinsight.tool-result.v1",
-        "ok": True,
-        "status": "ok",
-        "tool_name": "voxelinsight",
-        "provenance": {
-            "producer": "tool",
-            "tool_name": "voxelinsight",
-            "run_id": run_id,
-        },
-        "outputs": {},
-        "ui": ui,
-        "artifacts": artifacts,
-        "data": data,
-        "errors": [],
-    }
-
-
 def table_render_requested(user_message: str) -> bool:
     """Render tabular UI only when the user explicitly requested a table/list."""
     return any(
@@ -217,7 +111,6 @@ def _data_content_fingerprint(record: Dict[str, Any]) -> str:
     ).encode("utf-8")
     return f"preview-sha256:{hashlib.sha256(encoded).hexdigest()}"
 
-'''
 @cl.oauth_callback
 def oauth_callback(
     provider_id: str,
@@ -226,7 +119,6 @@ def oauth_callback(
     default_user: cl.User,
 ) -> Optional[cl.User]:
     return default_user
-'''
 
 
 async def _zip_paths(
@@ -1032,27 +924,13 @@ def _tool_display_label(
     return TOOL_DESCRIPTIONS.get(tool_name, tool_name)
 
 
-def _extract_stream_part(part: Any):
-    if isinstance(part, dict) and {"type", "data"}.issubset(part.keys()):
-        part_type = part.get("type")
-        data = part.get("data")
-        ns = tuple(part.get("ns") or ())
-        if part_type == "messages" and isinstance(data, (tuple, list)) and len(data) == 2:
-            return data[0], data[1], ns
-        if part_type == "updates":
-            return None, data, ns
-        return None, data, ns
-    if isinstance(part, (tuple, list)) and len(part) == 2:
-        return part[0], part[1], ()
-    return part, {}, ()
-
-
 TOOL_DESCRIPTIONS = {
     "task": "VoxelInsight Subagent",
     "idc_query": "IDC Query Tool",
     "bih_query": "BIH Query Tool",
     "imaging": "TotalSegmentator Segmentation - this may take a while",
     "monai": "MONAI Segmentation - this may take a while",
+    "nnunet": "nnU-Net Tumor Segmentation - this may take a while",
     "radiomics": "Radiomics Analysis",
     "viz_slider": "Slider Visualization Tool",
     "dicom2nifti": "DICOM to NIfTI Conversion",
@@ -1066,6 +944,8 @@ TOOL_DESCRIPTIONS = {
     "clinical_data_download": "Clinical Data Download",
     "image_registration": "Image Registration",
     "merlin_3d": "Merlin 3D Embedding",
+    "biomedclip": "BiomedCLIP Biomedical Image Analysis",
+    "brainiac": "BrainIAC MRI Analysis - this may take a while",
     "universeg": "Universeg Segmentation",
     "verify_artifacts": "Artifact Verification",
 }
@@ -1137,7 +1017,6 @@ async def on_message(message: cl.Message):
         or cl.context.session.id
     )
     cl.user_session.set("voxelinsight_thread_id", thread_id)
-    config = {"configurable": {"thread_id": thread_id}}
     status_handler = VoxelInsightHandler()
     await status_handler._rename_root("Initializing VoxelInsight...")
 
@@ -1188,24 +1067,12 @@ async def on_message(message: cl.Message):
         if text:
             await cl.Message(content=text).send()
 
-    await seed_registry_from_child_checkpoints(str(thread_id))
-    initial_state = merge_registry_delta_into_state(
-        build_initial_agent_state(message.content, files),
-        load_registry_delta(str(thread_id)),
-    )
     render_tables = table_render_requested(message.content)
+    requested_deliverables = infer_requested_deliverables(message.content)
     render_external_links = any(
         "viewer_link" in (deliverable.get("needs") or [])
-        for deliverable in (initial_state.get("requested_deliverables") or [])
+        for deliverable in requested_deliverables
         if isinstance(deliverable, dict)
-    )
-    run_id = str(initial_state["current_run_id"])
-    run_artifacts.update(
-        {
-            artifact_id: record
-            for artifact_id, record in (initial_state.get("artifact_registry") or {}).items()
-            if str(record.get("run_id") or "") == run_id
-        }
     )
     logged_subagent_prompt_keys = set()
 
@@ -1370,86 +1237,112 @@ async def on_message(message: cl.Message):
 
     drain_task = asyncio.create_task(_drain_progress())
 
-    try:
-        graph = await get_voxelinsight_graph()
-        async for raw_part in graph.astream(
-            initial_state,
-            stream_mode="messages",
-            subgraphs=True,
-            version="v2",
-            config=RunnableConfig(callbacks=[status_handler], **config),
-        ):
-            event, meta, namespace = _extract_stream_part(raw_part)
-            is_subagent = any(str(segment).startswith("tools:") for segment in namespace)
-            node = meta.get("langgraph_node") if isinstance(meta, dict) else None
-            if node and not is_subagent:
-                friendly = status_handler.node_descriptions.get(node, node)
-                await status_handler._rename_root(friendly)
+    async def _handle_stream_event(raw_part: Any, active_run_id: str) -> None:
+        nonlocal pending_main_text
+        event, meta, namespace = extract_stream_part(raw_part)
+        is_subagent = any(str(segment).startswith("tools:") for segment in namespace)
+        node = meta.get("langgraph_node") if isinstance(meta, dict) else None
+        if node and not is_subagent:
+            friendly = status_handler.node_descriptions.get(node, node)
+            await status_handler._rename_root(friendly)
 
-            if isinstance(event, ToolMessage):
-                await _complete_tool_call(event)
-                payloads = _collect_tool_payloads([event])
-                for p in payloads:
-                    if p.get("tool_name") == "task":
-                        continue
-                    delta = registry_delta_from_payload(
-                        p,
-                        tool_name=str(p.get("tool_name") or ""),
-                        tool_call_id=str(p.get("tool_call_id") or ""),
-                        run_id=run_id,
-                    )
-                    run_artifacts.update(delta.get("artifact_registry") or {})
-                    rendered = await _render_payload(
-                        p,
-                        rendered_ui_keys=rendered_ui_keys,
-                        rendered_code_keys=rendered_code_keys,
-                        rendered_artifact_ids=rendered_artifact_ids,
-                        rendered_data_ids=rendered_data_ids,
-                        rendered_data_fingerprints=rendered_data_fingerprints,
-                        rendered_file_paths=rendered_file_paths,
-                        rendered_external_urls=rendered_external_urls,
-                        allowed_ui_kinds=SAFE_SUBAGENT_UI_KINDS,
-                        render_outputs=True,
-                        render_tables=render_tables,
-                        render_errors=not is_subagent,
-                        render_external_links=render_external_links,
-                    )
-                    _record_rendered_outputs(rendered)
-
-            if isinstance(event, (AIMessage, AIMessageChunk)):
-                content = _stringify_content(getattr(event, "content", None))
-                tool_calls = getattr(event, "tool_calls", None) or []
-                tool_call_chunks = getattr(event, "tool_call_chunks", None) or []
-                has_tool_call = bool(tool_calls)
-                has_tool_call_chunks = bool(tool_call_chunks)
-                if has_tool_call or has_tool_call_chunks or is_subagent:
-                    if content and not is_subagent:
-                        pending_main_text += content
-                    for call in tool_calls:
-                        name, call_id, args, _index = _extract_tool_call_parts(call)
-                        await _record_tool_call(name, call_id, args)
-                    for chunk in tool_call_chunks:
-                        name, call_id, args, index = _extract_tool_call_parts(chunk)
-                        if index is not None:
-                            ns_key = tuple(str(segment) for segment in namespace)
-                            index_key = (ns_key, index)
-                            if call_id:
-                                tool_chunk_keys_by_index[index_key] = call_id
-                            else:
-                                call_id = tool_chunk_keys_by_index.get(index_key)
-                                if call_id is None and name:
-                                    call_id = f"{'/'.join(ns_key)}:{name}:{index}"
-                                    tool_chunk_keys_by_index[index_key] = call_id
-                        await _record_tool_call(name, call_id, args)
+        if isinstance(event, ToolMessage):
+            await _complete_tool_call(event)
+            payloads = _collect_tool_payloads([event])
+            for payload in payloads:
+                if payload.get("tool_name") == "task":
                     continue
+                delta = registry_delta_from_payload(
+                    payload,
+                    tool_name=str(payload.get("tool_name") or ""),
+                    tool_call_id=str(payload.get("tool_call_id") or ""),
+                    run_id=active_run_id,
+                )
+                run_artifacts.update(delta.get("artifact_registry") or {})
+                rendered = await _render_payload(
+                    payload,
+                    rendered_ui_keys=rendered_ui_keys,
+                    rendered_code_keys=rendered_code_keys,
+                    rendered_artifact_ids=rendered_artifact_ids,
+                    rendered_data_ids=rendered_data_ids,
+                    rendered_data_fingerprints=rendered_data_fingerprints,
+                    rendered_file_paths=rendered_file_paths,
+                    rendered_external_urls=rendered_external_urls,
+                    allowed_ui_kinds=SAFE_SUBAGENT_UI_KINDS,
+                    render_outputs=True,
+                    render_tables=render_tables,
+                    render_errors=not is_subagent,
+                    render_external_links=render_external_links,
+                )
+                _record_rendered_outputs(rendered)
+
+        if isinstance(event, (AIMessage, AIMessageChunk)):
+            content = _stringify_content(getattr(event, "content", None))
+            tool_calls = getattr(event, "tool_calls", None) or []
+            tool_call_chunks = getattr(event, "tool_call_chunks", None) or []
+            has_tool_call = bool(tool_calls)
+            has_tool_call_chunks = bool(tool_call_chunks)
+            if has_tool_call or has_tool_call_chunks or is_subagent:
                 if content and not is_subagent:
                     pending_main_text += content
+                for call in tool_calls:
+                    name, call_id, args, _index = _extract_tool_call_parts(call)
+                    await _record_tool_call(name, call_id, args)
+                for chunk in tool_call_chunks:
+                    name, call_id, args, index = _extract_tool_call_parts(chunk)
+                    if index is not None:
+                        ns_key = tuple(str(segment) for segment in namespace)
+                        index_key = (ns_key, index)
+                        if call_id:
+                            tool_chunk_keys_by_index[index_key] = call_id
+                        else:
+                            call_id = tool_chunk_keys_by_index.get(index_key)
+                            if call_id is None and name:
+                                call_id = f"{'/'.join(ns_key)}:{name}:{index}"
+                                tool_chunk_keys_by_index[index_key] = call_id
+                    await _record_tool_call(name, call_id, args)
+                return
+            if content and not is_subagent:
+                pending_main_text += content
 
-        state_snapshot = await graph.aget_state(config)
-        registry_payload = registry_payload_for_run(
-            dict(state_snapshot.values or {}),
-            run_id,
+    async def _confirm_interaction(request: ConfirmationRequest) -> bool:
+        response = await cl.AskActionMessage(
+            content=request.content,
+            actions=[
+                cl.Action(
+                    name="continue",
+                    payload={"value": "continue"},
+                    label="✅ Continue",
+                ),
+                cl.Action(
+                    name="cancel",
+                    payload={"value": "cancel"},
+                    label="❌ Cancel",
+                ),
+            ],
+        ).send()
+        return bool(
+            response and response.get("payload", {}).get("value") == "continue"
         )
+
+    async def _notify_interaction(content: str) -> None:
+        await cl.Message(content=content).send()
+
+    try:
+        with interaction_context(
+            InteractionHandler(
+                confirm=_confirm_interaction,
+                notify=_notify_interaction,
+            )
+        ):
+            turn_result = await execute_turn(
+                message.content,
+                thread_id=str(thread_id),
+                uploaded_files=files,
+                callbacks=[status_handler],
+                on_stream_event=_handle_stream_event,
+            )
+        registry_payload = turn_result.registry_payload
         run_artifacts = {
             str(record["artifact_id"]): record
             for record in registry_payload["artifacts"]

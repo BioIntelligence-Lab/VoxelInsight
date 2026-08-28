@@ -14,11 +14,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional
 
-import chainlit as cl
 import pandas as pd
 from pydantic import BaseModel, Field
 
 from core.state import ConversationState, Task, TaskResult
+from core.interactions import confirm_operation, notify_user
 from core.storage import persist_root
 from progress_ui import update_progress
 from tools.shared import _cs, toolify_agent
@@ -129,6 +129,19 @@ class IDCDownloadAgent:
                 )
             client = self._client_factory()
             manifest_rows = self._authoritative_manifest(client, supplied_uids)
+            expected_patient_count = kw.get("expected_patient_count")
+            actual_patient_count = len(
+                {str(row.get("PatientID") or "") for row in manifest_rows}
+                - {""}
+            )
+            if (
+                expected_patient_count is not None
+                and actual_patient_count != int(expected_patient_count)
+            ):
+                raise ValueError(
+                    "IDC manifest patient cardinality mismatch: expected "
+                    f"{int(expected_patient_count)} patients, found {actual_patient_count}."
+                )
             idc_data_version = str(getattr(client, "idc_version", None) or "unknown")
         except Exception as exc:
             return TaskResult(
@@ -193,36 +206,32 @@ class IDCDownloadAgent:
             entry.get("status") == "completed" for entry in ledger["series"].values()
         )
         estimated_gb = manifest_payload["estimated_size_mb"] / 1000.0
-        confirmation = await cl.AskActionMessage(
-            content=(
-                "Start this IDC cohort download?\n\n"
-                f"- Patients: {manifest_payload['patient_count']}\n"
-                f"- Series: {manifest_payload['series_count']}\n"
-                f"- Estimated size: {estimated_gb:.2f} GB\n"
-                f"- Already complete/resumable: {completed_before}\n"
-                f"- Concurrent series downloads: {max_concurrency}\n"
-                f"- Retries per series: {max_retries}\n"
-                f"- Verification: instance counts + {checksum_mode} checksum mode\n\n"
-                "One confirmation submits the complete deterministic batch job."
-            ),
-            actions=[
-                cl.Action(
-                    name="continue",
-                    payload={"value": "continue"},
-                    label="✅ Start / Resume",
-                ),
-                cl.Action(
-                    name="cancel",
-                    payload={"value": "cancel"},
-                    label="❌ Cancel",
-                ),
-            ],
-        ).send()
+        confirmation_content = (
+            "Start this IDC cohort download?\n\n"
+            f"- Patients: {manifest_payload['patient_count']}\n"
+            f"- Series: {manifest_payload['series_count']}\n"
+            f"- Estimated size: {estimated_gb:.2f} GB\n"
+            f"- Already complete/resumable: {completed_before}\n"
+            f"- Concurrent series downloads: {max_concurrency}\n"
+            f"- Retries per series: {max_retries}\n"
+            f"- Verification: instance counts + {checksum_mode} checksum mode\n\n"
+            "One confirmation submits the complete deterministic batch job."
+        )
+        confirmed = await confirm_operation(
+            kind="idc_download",
+            content=confirmation_content,
+            details={
+                "patients": manifest_payload["patient_count"],
+                "series": manifest_payload["series_count"],
+                "estimated_size_gb": estimated_gb,
+                "completed_before": completed_before,
+                "max_concurrency": max_concurrency,
+                "max_retries": max_retries,
+                "checksum_mode": checksum_mode,
+            },
+        )
 
-        if not (
-            confirmation
-            and confirmation.get("payload", {}).get("value") == "continue"
-        ):
+        if not confirmed:
             for entry in ledger["series"].values():
                 if entry.get("status") != "completed":
                     entry["status"] = "cancelled"
@@ -237,9 +246,9 @@ class IDCDownloadAgent:
                 series_status_path=series_status_path,
                 patient_status_path=patient_status_path,
             )
-            await cl.Message(
-                content="IDC cohort download cancelled; any previously completed series were preserved."
-            ).send()
+            await notify_user(
+                "IDC cohort download cancelled; any previously completed series were preserved."
+            )
             return self._job_result(
                 ledger,
                 download_root=download_root,
@@ -250,7 +259,7 @@ class IDCDownloadAgent:
                 cancelled=True,
             )
 
-        await cl.Message(content="Starting the IDC cohort batch download...").send()
+        await notify_user("Starting the IDC cohort batch download...")
         ledger["job_status"] = "running"
         ledger["updated_at"] = _utc_now()
         self._write_job_outputs(
@@ -863,8 +872,18 @@ class IDCDownloadArgs(BaseModel):
         ge=1,
         le=MAX_BATCH_SERIES,
         description=(
-            "Expected exact manifest cardinality from the user's request. Supply this whenever "
-            "the user requested a numeric patient/series sample; the tool refuses mismatches."
+            "Expected exact series cardinality from the registered manifest's nrows/counts. "
+            "This is not the requested patient count unless scope is representative. The tool "
+            "refuses mismatches."
+        ),
+    )
+    expected_patient_count: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=500,
+        description=(
+            "Expected exact distinct-patient cardinality from the registered manifest. "
+            "Use this independently of expected_series_count."
         ),
     )
     timeout_s: int = Field(
@@ -903,8 +922,9 @@ class IDCDownloadArgs(BaseModel):
     description=(
         "Submit one confirmed, resumable IDC download job for one series or an entire exact "
         "SeriesInstanceUID manifest. The tool performs bounded concurrency, per-series retries, "
-        "per-patient status tracking, instance-count/checksum verification, and durable resume "
-        "internally. For cohorts, call this tool exactly once; never loop over patients or series."
+        "separate expected patient/series cardinality checks, per-patient status tracking, "
+        "instance-count/checksum verification, and durable resume internally. For cohorts, call "
+        "this tool exactly once; never loop over patients or series."
     ),
     args_schema=IDCDownloadArgs,
     timeout_s=86400,
@@ -914,6 +934,7 @@ async def idc_download_runner(
     series_uids: Optional[List[str]] = None,
     manifest_path: Optional[str] = None,
     expected_series_count: Optional[int] = None,
+    expected_patient_count: Optional[int] = None,
     timeout_s: int = 3600,
     max_concurrency: int = 4,
     max_retries: int = 2,
@@ -932,6 +953,7 @@ async def idc_download_runner(
             "series_uids": series_uids,
             "manifest_path": manifest_path,
             "expected_series_count": expected_series_count,
+            "expected_patient_count": expected_patient_count,
             "timeout_s": timeout_s,
             "max_concurrency": max_concurrency,
             "max_retries": max_retries,

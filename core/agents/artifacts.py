@@ -99,8 +99,12 @@ class ToolEvent(BaseModel):
     tool_call_id: str = ""
     run_id: str = ""
     status: ToolStatus = "ok"
+    input_artifact_ids: List[str] = Field(default_factory=list)
+    input_data_ids: List[str] = Field(default_factory=list)
+    arguments_summary: Dict[str, Any] = Field(default_factory=dict)
     artifact_ids: List[str] = Field(default_factory=list)
     data_ids: List[str] = Field(default_factory=list)
+    outputs_summary: Dict[str, Any] = Field(default_factory=dict)
     errors: List[str] = Field(default_factory=list)
 
 
@@ -185,6 +189,7 @@ class VoxelAgentState(AgentState):
     current_run_id: NotRequired[str]
     current_user_request: NotRequired[str]
     requested_deliverables: NotRequired[List[Dict[str, Any]]]
+    verification_cycle: NotRequired[Dict[str, Any]]
 
 
 def dump_model(model: BaseModel) -> Dict[str, Any]:

@@ -1,0 +1,30 @@
+version: "2026-08-05"
+currency: USD
+source: https://developers.openai.com/api/docs/pricing
+service_tier: standard
+context_window: short
+long_context_threshold_input_tokens: 272000
+
+# Snapshot of OpenAI's Standard API rates, in USD per one million tokens.
+# These are the exact model IDs configured in VoxelInsight. The estimator uses
+# these short-context rates; GPT-5.6 requests with >272K input tokens instead
+# receive the long-context multipliers documented on the pricing page.
+# Unknown model IDs intentionally produce cost=null, never zero.
+models:
+  gpt-5.6-sol:
+    input_per_million: 5.00
+    cached_input_per_million: 0.50
+    cache_write_per_million: 6.25
+    output_per_million: 30.00
+
+  gpt-5.6-terra:
+    input_per_million: 2.00
+    cached_input_per_million: 0.20
+    cache_write_per_million: 2.50
+    output_per_million: 12.00
+
+  gpt-5.6-luna:
+    input_per_million: 0.20
+    cached_input_per_million: 0.02
+    cache_write_per_million: 0.25
+    output_per_million: 1.20

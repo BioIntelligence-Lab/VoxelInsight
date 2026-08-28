@@ -234,6 +234,32 @@ python midrc_graph_mirror.py
 #### 3) Radiomics: You can extract radiomics from any image-mask pair(s). This agent uses pyRadiomics for radiomics extraction.
 - Extract radiomics from the uploaded image and mask.
 - What is the volume and surface area of the liver in the given CT scan? (Note: This first runs totalsegmenttor to segment liver and then runs pyradiomics to get the volume and surface area)
+
+## Automated evaluations
+
+The local evaluation harness executes YAML scenarios through the same graph-turn runtime
+used by the Chainlit UI. Each repetition uses a fresh thread, while turns within one case
+share a thread so follow-up prompts retain context.
+
+Run the included kidney workflow cases:
+
+```bash
+python -m evaluation.run evaluation/cases/kidney_demo.yaml --repetitions 1
+```
+
+Resume completed batches or select one case:
+
+```bash
+python -m evaluation.run evaluation/cases/kidney_demo.yaml --resume
+python -m evaluation.run evaluation/cases/kidney_demo.yaml --case c4kc_kits_sequence_plot
+```
+
+Results are written under `evaluation_results/<experiment_id>/` as one `run.json`,
+`trace.jsonl`, and `artifacts.json` bundle per repetition, plus a paper-ready
+`summary.csv`. Automated downloads are denied unless the case explicitly sets an approval
+policy. Populate `evaluation/pricing.yaml` with the exact billed model IDs and per-million
+token prices used for an experiment; unknown prices intentionally produce a null cost.
+
 ---
 
 ## 🧭 Roadmap & Upcoming Features

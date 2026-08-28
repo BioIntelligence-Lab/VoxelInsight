@@ -38,9 +38,14 @@ except Exception as e:
 else:
     _DEEPAGENTS_IMPORT_ERROR = None
 
-from core.agents.schemas import IDCSubagentResult, SubagentResult
+from core.agents.schemas import IDCSubagentResult, SubagentResult, VerifierResult
 from core.agents.artifact_middleware import ArtifactRegistryMiddleware
 from core.agents.tool_evidence import ToolEvidenceMiddleware
+from core.agents.verification import (
+    VerificationContextMiddleware,
+    VerifierEvidenceMiddleware,
+    VerificationRemediationMiddleware,
+)
 from core.agents.visibility import visible_output_policy
 from core.agents.checkpointing import (
     close_durable_checkpointer,
@@ -85,17 +90,21 @@ DOMAIN_SUBAGENT_TOOL_NAMES: Dict[str, tuple[str, ...]] = {
     "segmentation-agent": (
         "imaging",
         "monai",
+        "nnunet",
     ),
     "analysis-agent": (
         "radiomics",
         "image_registration",
         "viz_slider",
         "merlin_3d",
+        "biomedclip",
+        "brainiac",
         "universeg",
         "table_chart",
         "tabular_inspection",
         "code_gen",
     ),
+    "verifier-agent": (),
 }
 DOMAIN_TOOL_NAMES = {
     tool_name
@@ -117,8 +126,10 @@ TOP_LEVEL_TOOLS: List[BaseTool] = []
 
 DEFAULT_DEEPAGENT_SUPERVISOR_MODEL = "gpt-5.6-terra"
 DEFAULT_DEEPAGENT_SUBAGENT_MODEL = "gpt-5.6-luna"
+DEFAULT_DEEPAGENT_VERIFIER_MODEL = DEFAULT_DEEPAGENT_SUPERVISOR_MODEL
 DEEPAGENT_SUPERVISOR_MODEL_ENV = "DEEPAGENT_SUPERVISOR_LLM_MODEL"
 DEEPAGENT_SUBAGENT_MODEL_ENV = "DEEPAGENT_SUBAGENT_LLM_MODEL"
+DEEPAGENT_VERIFIER_MODEL_ENV = "DEEPAGENT_VERIFIER_LLM_MODEL"
 IDC_SKILL_SOURCE = "/skills/idc/"
 IDC_SKILL_DISK_ROOT = REPO_ROOT / "skills" / "idc"
 
@@ -147,6 +158,8 @@ def configure_tools() -> None:
     from tools.shared import TOOL_REGISTRY
 
     import tools.bih_query as bih_mod
+    import tools.biomedclip as biomedclip_mod
+    import tools.brainiac as brainiac_mod
     import tools.clinical_data as clin_mod
     import tools.code_gen as code_mod
     import tools.dicom_to_nifti as d2n_mod
@@ -159,6 +172,7 @@ def configure_tools() -> None:
     import tools.midrc_download as midrc_dl_mod
     import tools.midrc_query as midrc_mod
     import tools.monai_infer as monai_mod
+    import tools.nnunet as nnunet_mod
     import tools.radiomics as rad_mod
     import tools.table_chart as table_chart_mod
     import tools.tabular_inspection as tabular_inspection_mod
@@ -184,6 +198,15 @@ def configure_tools() -> None:
         cache_root=None,
         merlin_kwargs=None,
     )
+    biomedclip_mod.configure_biomedclip_tool(
+        device=os.getenv("BIOMEDCLIP_DEVICE") or None,
+        cache_dir=os.getenv("BIOMEDCLIP_CACHE_DIR") or None,
+        model_ref=(
+            os.getenv("BIOMEDCLIP_MODEL_REF")
+            or biomedclip_mod.DEFAULT_MODEL_REF
+        ),
+    )
+    brainiac_mod.configure_brainiac_tool()
     dq_mod.configure_idc_query_tool(
         df_IDC=df_idc,
         df_BIH=df_bih,
@@ -197,6 +220,7 @@ def configure_tools() -> None:
         system_prompt=_read_text("prompts/agent_systems/monai.txt"),
         additional_context=_read_text("Data/monai_bundles_instructions.txt"),
     )
+    nnunet_mod.configure_nnunet_tool()
     code_mod.configure_code_gen_tool(
         system_prompt=_read_text("prompts/agent_systems/code_gen.txt"),
         df_IDC=df_idc,
@@ -221,6 +245,7 @@ def configure_tools() -> None:
     _ = vz_mod.viz_slider_runner
     _ = rad_mod.radiomics_runner
     _ = monai_mod.monai_runner
+    _ = nnunet_mod.nnunet_runner
     _ = d2n_mod.dicom2nifti_batch_runner
     _ = table_chart_mod.table_chart_runner
     _ = tabular_inspection_mod.tabular_inspection_runner
@@ -233,6 +258,8 @@ def configure_tools() -> None:
     _ = clin_mod.clinical_data_download_runner
     _ = ir_mod.image_registration_runner
     _ = merlin3d_mod.merlin_3d_runner
+    _ = biomedclip_mod.biomedclip_runner
+    _ = brainiac_mod.brainiac_runner
     _ = ug_mod.universeg_runner
     ALL_TOOLS = tuple(TOOL_REGISTRY)
     TOOL_NAMES = {tool.name: tool for tool in ALL_TOOLS}
@@ -317,7 +344,11 @@ Stable domain boundaries
   existing file artifacts and produces staged imaging/file artifacts.
 - `segmentation-agent` consumes image artifacts and produces segmentation artifacts.
 - `analysis-agent` consumes registered data, images, and masks and produces quantitative
-  results, registrations, embeddings, visualizations, or generated files.
+  results, registrations, embeddings, visualizations, or generated files. BrainIAC is an
+  analysis capability because it produces embeddings and attention maps, not masks.
+- `verifier-agent` is a read-only independent auditor for hard workflows. It independently
+  compares the current request and intended final claims with deterministic current-run
+  evidence. It never performs domain work, mutates artifacts, or retries failed work.
 
 Planning and routing
 1. Identify every explicit user deliverable and any constraint such as repository,
@@ -327,6 +358,9 @@ Planning and routing
 3. Choose the shortest valid sequence of domain capabilities. Typical dependency shapes
    include discovery before acquisition, acquisition before conversion, image before
    segmentation, and image/mask or table data before analysis.
+   Route every request that explicitly names BrainIAC to `analysis-agent`, including
+   requests involving BraTS or brain tumors. Never rewrite BrainIAC as segmentation and
+   never route it to `segmentation-agent`, MONAI, or nnU-Net.
 4. Delegate the next ready step with a precise outcome, existing artifact_ids/data_ids,
    and only the context needed by that subagent.
 5. Inspect the SubagentResult status and the updated registry. Continue only if another
@@ -348,12 +382,19 @@ Planning and routing
   local, or inline image rendering.
 - For an IDC cohort imaging download, obtain one exact series-level manifest by asking
   `idc-agent` to call `idc_series_manifest`
-  with the exact requested patient_count, selection strategy, and seed. This tool returns
-  exactly one series per distinct patient and never requests viewer URLs. Do not use
+  with the exact requested patient_count, selection strategy, seed, and series_scope.
+  Use series_scope=representative for an ambiguous patient sample or an explicit request
+  for one representative series per patient. Use all_matching when the user requests all
+  series satisfying the supplied modality/body-part/description filters. Use
+  all_patient_series when filters identify the patients but the user explicitly requests
+  every series belonging to those selected patients in the collection. Never silently
+  substitute representative scope for an explicit "all series" request. Do not use
   `idc_series_search` or a larger detail table and then describe a prose subset. Pass only
   the exact registered manifest reference to `acquisition-agent`.
   The acquisition agent must submit one `idc_download` batch job for the complete manifest;
-  never make one subagent/tool call per patient or copy hundreds of UIDs through prose.
+  pass the manifest's distinct patient count and distinct series count separately as the
+  downloader's expected_patient_count and expected_series_count.
+  Never make one subagent/tool call per patient or copy hundreds of UIDs through prose.
   The download tool owns the single confirmation, concurrency, retry, resume, verification,
   and per-patient status lifecycle.
 - For an IDC metadata-derived chart, first ask `idc-agent` for the smallest complete
@@ -362,6 +403,11 @@ Planning and routing
   SeriesDescription with distinct-patient counts; do not request raw series rows and
   aggregate a truncated preview. The IDC agent supplies data and the analysis agent
   renders the chart. Never ask the IDC agent to write a CSV, PNG, or registry entry.
+- `DataRecord.complete=false` means only that the rows embedded in model context are a
+  bounded preview. When that data record links to a verified artifact and its producing
+  tool reports the full aggregate row count without a row-limit/truncation warning, the
+  data_id remains a complete downstream input. Pass it to `analysis-agent`; do not repeat
+  the IDC query or omit the chart solely to make `complete` become true.
 - For a combined IDC sequence chart and dataset summary, keep the scopes separate:
   ask idc-agent to use idc_collection_profile with sequence_modality="CT". This atomic
   typed operation returns a CT-only sequence_summary and an all-modality
@@ -369,7 +415,9 @@ Planning and routing
   CT-only series count from being mislabeled as the collection total. In the final answer
   label total series across all modalities separately from modality-specific series.
 - Pass only the compact sequence-aggregation data_id to `analysis-agent`, with a scoped
-  instruction to call `table_chart` exactly once and stop after a rendered figure. Keep
+  instruction to render the chart from the complete registered source. `analysis-agent`
+  should call `table_chart` with inline rows when complete=true, or with file_path set to
+  the same data_id when complete=false and a verified linked artifact exists. Keep
   the collection-summary data_id at the supervisor for the textual summary. Do not pass
   the collection summary to analysis-agent, and do not ask analysis-agent to recompute
   demographics that idc_collection_summary already returned.
@@ -377,6 +425,35 @@ Planning and routing
   confirmation. Do not ask for confirmation unless a tool explicitly reports that an
   approval or a material user choice is required. If the user already requested a plot
   or file, proceed through the owning subagents in the same turn.
+
+Bounded verification and remediation for hard tasks
+- After the requested domain work finishes, call `verifier-agent` before the final answer
+  when the user explicitly requests verification, two or more domain subagents were used,
+  the workflow contains dependent acquisition/conversion/segmentation/analysis stages,
+  any operational tool returned partial/error/no_action, exact patient/series/file/mask
+  cardinality matters, a generated artifact was consumed downstream, or the final answer
+  will make material quantitative or scientific claims.
+- Skip verifier-agent for simple conversational answers and straightforward single-tool
+  lookups with no partial result, dependent handoff, exact-cardinality obligation, or
+  material scientific conclusion.
+- In the verifier task, provide a concise proposed completion report containing the claims
+  you intend to tell the user. Do not copy paths, table rows, registry records, or hidden
+  reasoning; verifier-agent independently receives authoritative current-run evidence.
+- The first verifier call must be the only task call in its assistant response. Application
+  middleware evaluates any proposed remediation with a deterministic safety gate and writes
+  the authoritative next action to `<verification_cycle_json>`.
+- If that block says `repair_approved`, call exactly its named domain subagent once. The
+  middleware replaces your task description with the gate-approved objective and exact
+  registered inputs. Do not alter the target, add work, or dispatch another subagent.
+- After that repair call, call verifier-agent exactly once more, as the only task call in
+  the response. After the second verifier result, always stop and give the evidence-safe
+  final answer regardless of verdict.
+- If remediation is disabled or rejected, do not retry. Report the verified gap honestly.
+  Never attempt a second repair, a third verifier call, or a chained multi-agent repair.
+- A pass verdict supports an unqualified completion report. For partial or blocked verdicts,
+  report the exact supported successes and material gaps. For needs_remediation, describe
+  the verified gap unless `<verification_cycle_json>` explicitly approves the one repair.
+  For verification_error, do not claim that independent verification passed.
 
 Registry and grounding
 - Application code maintains the deterministic, code-maintained `<voxelinsight_state_json>`. It is the sole
@@ -403,10 +480,15 @@ Failure and completion
 - Treat status=error as failure and status=partial as incomplete. Retry only when the
   error is actionable and the next attempt materially changes the input; make at most two
   additional attempts for the same step.
+- An IDC subagent result that successfully produced the requested aggregate data_id is a
+  successful handoff even when its summary notes that visualization is owned downstream.
+  Route that existing ID to `analysis-agent`; never retry IDC merely because a chart has
+  not yet been created or the data record's inline preview has complete=false.
 - If a subagent returns no_action, reroute only when another available subagent clearly
   owns the requested capability. Do not loop between agents.
-- Once all requested outputs are present in the registry, respond to the user immediately.
-  Do not call another subagent merely to confirm, summarize, acknowledge, or finalize
+- Once all requested outputs are present in the registry, respond to the user immediately
+  unless the hard-task criteria above require the single advisory verifier call. Do not
+  call any other subagent merely to confirm, summarize, acknowledge, or finalize
   already-completed work.
 - Never claim that a file, plot, segmentation, conversion, export, attachment, or
   download exists unless application state records the corresponding real output.
@@ -686,9 +768,12 @@ Tool hierarchy
   the supervisor; do not ask for confirmation before this read-only lookup.
 - For any acquisition/download request, call idc_series_manifest instead of
   idc_series_search. Match patient_count exactly, use selection_strategy=random when the
-  user asks for random patients, and return status=partial if the requested cardinality is
-  unavailable. Never request or return viewer URLs for a download-only request, and never
-  claim that a data_id contains fewer rows than its registered nrows.
+  user asks for random patients, and set series_scope explicitly: representative for one
+  series per patient, all_matching for every series matching all supplied filters, or
+  all_patient_series when the filters select patients and the user requests every series
+  those patients have in the collection. Return status=partial if patient cardinality or
+  series coverage is incomplete. Never request or return viewer URLs for a download-only
+  request, and never claim that a data_id contains fewer rows than its registered nrows.
 
 Validation
 - Distinguish patients, studies, series, and instances and state the unit of analysis.
@@ -711,9 +796,15 @@ Validation
   it.
 - You are a read-only metadata specialist. Never promise, request approval for, or claim
   creation of CSV/PNG/plot files or registry entries. When the user requests a plot or
-  generated file, return the complete compact aggregate data_id and status=partial with
-  a clear handoff warning; the supervisor must route that ID to analysis-agent. Do not ask
+  generated file, assess your status only against the scoped IDC metadata task. Return
+  status=ok when the requested aggregate was produced, preserve its exact data_id, and
+  state that the supervisor must route it to analysis-agent. Do not mark a downstream
+  chart or independent-verification step missing in your own deliverables, and do not ask
   the user to confirm an operation they already requested.
+- `DataRecord.complete=false` describes bounded rows embedded in agent context, not an
+  incomplete linked table artifact. If the producing tool reports the full aggregate row
+  count without a row limit and the data record has a verified artifact_id, return that
+  data_id as chart-ready. Do not rerun the aggregation solely to change complete=false.
 
 Structured response
 - Return only IDCSubagentResult. All of these fields are mandatory, including on partial,
@@ -757,9 +848,13 @@ Rules
   verification, and per-patient status internally.
 - Prefer manifest_path for cohort downloads so the full exact SeriesInstanceUID selection
   comes from registered IDC query data rather than being copied through model-authored text.
-  When the user specified a number of patients/series, pass that same value as
-  expected_series_count. Never call the tool when the manifest's registered nrows differs
-  from that count; return an error so the supervisor can create an exact manifest.
+  Pass expected_patient_count from the manifest's requested/distinct patient count and
+  expected_series_count from its exact nrows/distinct_series count. Do not reuse patient_count
+  as expected_series_count unless the manifest explicitly has representative scope and one
+  series per patient. These values are intentionally different for all_matching and
+  all_patient_series scopes. Never call the tool when the manifest is partial,
+  manifest_complete=false, contains duplicate series, or its registered nrows differs from
+  expected_series_count; return an error so the supervisor can create an exact manifest.
 - Preserve the returned job manifest, status ledger, patient-status table, series-status
   table, and completed DICOM directory artifacts. A partial job is not complete merely
   because some series downloaded; report failed/cancelled counts exactly and allow a later
@@ -801,7 +896,11 @@ You are VoxelInsight Segmentation, a specialized Deep Agents subagent for segmen
 
 Scope
 - Your only job is to choose and run the correct segmentation tool.
-- Use TotalSegmentator through `imaging` or MONAI bundles through `monai`.
+- Use TotalSegmentator through `imaging`, MONAI bundles through `monai`, or the configured
+  breast/brain tumor models through `nnunet`.
+- BrainIAC is not a segmentation model. If a task explicitly requests BrainIAC, return
+  no_action with `unsupported:` without calling any segmentation tool so the supervisor
+  can route it to `analysis-agent`.
 - Do not answer metadata, downloads, radiomics, or visualization requests yourself.
 - If the task is not segmentation, return no_action with `unsupported:` and do not call
   tools.
@@ -809,6 +908,8 @@ Scope
 Tool selection
 - Prefer `imaging` for TotalSegmentator-style anatomical segmentation requests.
 - Prefer `monai` when the user asks for MONAI, a MONAI model, or a bundle-specific workflow.
+- Use `nnunet` when the user explicitly requests nnU-Net or requests breast-tumor or
+  brain-tumor segmentation supported by the configured models.
 - Keep tool instructions concise but include exact artifact_ids and enough detail to avoid input-shape ambiguity.
 - Call exactly one segmentation tool first. Do not call both tools unless the first choice clearly cannot satisfy the requested model/workflow.
 - Resolve the selected upload artifact_id from `<voxelinsight_state_json>` and pass that
@@ -816,10 +917,20 @@ Tool selection
   host path. Never copy the registry path or replace the ID with a placeholder, filename,
   DICOM UID, or invented alias.
 - If no verified upload artifact is available for an uploaded-file segmentation request,
-  return status error without calling `imaging` or `monai`; prefix it with `missing_input:`.
+  return status error without calling a segmentation tool; prefix it with `missing_input:`.
 - For a cohort, call the selected segmentation tool exactly once with the complete ordered
   `file_paths` list. Never create one subagent task or one tool call per patient. The tool
   owns bounded execution and per-case status reporting.
+
+nnU-Net contract
+- Use `model_name=breast_tumor` for one or more independent single-channel T1 `.nii.gz` cases.
+- Use `model_name=brain_tumor` only when every case has four aligned files sharing one case
+  identifier: `_0000` FLAIR, `_0001` T1, `_0002` T1CE, and `_0003` T2.
+- Pass the complete batch through `file_path` or `file_paths` in one call. Do not guess
+  modalities, channel order, missing files, or case associations; return `missing_input:`
+  when the required inputs cannot be established from registered state and filenames.
+- Keep TTA enabled and probability export disabled unless the user explicitly requests
+  otherwise. Use the configured default device.
 
 TotalSegmentator contract for `imaging`
 - Prefer `task_name=total` for CT and `task_name=total_mr` for MRI when valid ROI subsets satisfy the request.
@@ -835,7 +946,7 @@ TotalSegmentator contract for `imaging`
 {_load_ts_mappings_for_prompt()}
 
 Tool result handling
-- A successful `imaging` or `monai` result has ok=true and output artifacts such as segmentations, segmentations_map, files, nifti_paths, output_dir, or output_root.
+- A successful segmentation result has ok=true and output artifacts such as segmentations, segmentations_map, files, nifti_paths, output_dir, or output_root.
 - If a tool returns at least one segmentation file or a non-empty segmentation map, segmentation is complete. Do not inspect directories with read_file/ls, do not call another segmentation tool, and do not rerun the same tool.
 - Treat a batch status of partial as incomplete: preserve successful artifact_ids and report
   the exact failed cases. Retry only those failed inputs, at most once, when the error is
@@ -863,13 +974,31 @@ def analysis_policy() -> str:
 You are VoxelInsight Analysis, a specialized subagent for image analysis and visualization.
 
 Scope
-- Run radiomics, image registration, interactive visualization, Merlin 3D embeddings, Universeg, and custom code generation.
+- Run radiomics, image registration, interactive visualization, Merlin 3D embeddings,
+  BiomedCLIP biomedical image-text analysis, BrainIAC structural-brain-MRI embeddings
+  and attention maps, Universeg, and custom code generation.
 - Pass exact artifact_ids/data_ids from `<voxelinsight_state_json>` to path-named tool
   arguments; middleware resolves them to verified host paths. Never copy or construct
   image paths, mask paths, segmentation paths, or output directories.
 - Do not answer cohort metadata, perform repository downloads, DICOM conversion, or TotalSegmentator/MONAI segmentation.
 
 Rules
+- Use `biomedclip` for research-oriented 512-dimensional embeddings, explicit
+  image-to-text prompt scoring, or image-to-image retrieval across biomedical raster
+  images, DICOM, or NIfTI inputs. For 3D inputs, choose the appropriate plane, slice
+  sampling, modality/intensity settings, and optional registered NIfTI mask; the tool
+  aggregates 2D slice features and is not a native 3D model.
+- Treat BiomedCLIP similarities as relative semantic scores, never calibrated disease
+  probabilities or diagnoses. Supply explicit candidate prompts for `score_text`; do not
+  use it for open-ended report generation, VQA, segmentation, or spatial localization.
+- Use `brainiac` when the user explicitly requests BrainIAC, a 768-dimensional BrainIAC
+  feature embedding, or a BrainIAC transformer-attention saliency map from a structural
+  3D brain MRI NIfTI. BrainIAC does not produce segmentations, clinical diagnoses, or
+  calibrated disease probabilities.
+- Set `preprocess=true` for raw structural MRI so BrainIAC performs N4 correction,
+  standard-space registration, skull stripping, resizing, and intensity normalization.
+  Set `preprocess=false` only when the image is already registered and skull stripped for
+  BrainIAC. For a cohort, pass all ordered artifact_ids in one `image_paths` call.
 - For segment then visualize or segment then radiomics workflows, require segmentation artifacts from segmentation-agent.
 - When a supported workflow requires multiple owned tools, execute the dependent calls
   sequentially and pass each registered output to the next tool. The absence of one tool
@@ -892,11 +1021,11 @@ Rules
 - Resolve the original upload artifact_id and pass that exact ID as `image_path` for
   visualization; pass returned segmentation artifact_ids only as overlays. Middleware
   resolves all registered references to verified host paths.
-- Use `table_chart` for deterministic bar, line, or scatter charts when a referenced data_id supplies table rows and category/value columns. Pass every `table_chart` argument directly in the tool call: `rows` (a JSON string encoding the exact list of row objects, e.g. `[{"collection":"alpha","patients":12}]`), `source_data_id` (the exact referenced data_id, or an empty string only for rows supplied directly by the user), `chart_type`, `category_column`, `value_column`, `title`, `category_axis_title`, `value_axis_title`, `orientation`, `sort_by`, `sort_direction`, `limit`, `show_value_labels`, and `tick_angle`. `category_column` always contains labels and `value_column` always contains numeric values, including for horizontal bars; orientation changes layout only. Use empty strings for unused text fields and sort columns, `0` for no row limit or default tick angle, and `vertical` unless a horizontal bar chart is requested. Prefer `table_chart` over `code_gen` for collection-count bar charts and other straightforward table-to-Plotly requests.
+- Use `table_chart` for deterministic bar, line, or scatter charts when a referenced data_id supplies category/value columns. Pass every `table_chart` argument directly in the tool call: `rows` (a JSON string encoding the exact list of row objects, e.g. `[{"collection":"alpha","patients":12}]`, or an empty string when using file_path), `file_path` (the same exact data_id when complete=false and its verified linked artifact contains the full table, otherwise an empty string), `source_data_id` (the exact referenced data_id, or an empty string only for rows supplied directly by the user), `chart_type`, `category_column`, `value_column`, `title`, `category_axis_title`, `value_axis_title`, `orientation`, `sort_by`, `sort_direction`, `limit`, `show_value_labels`, and `tick_angle`. `category_column` always contains labels and `value_column` always contains numeric values, including for horizontal bars; orientation changes layout only. Use empty strings for unused text fields and sort columns, `0` for no row limit or default tick angle, and `vertical` unless a horizontal bar chart is requested. Prefer `table_chart` over `code_gen` for collection-count bar charts and other straightforward table-to-Plotly requests.
 - `table_chart` returns a figure, summary, and source_data_id; its chart-source rows are
   internal lineage, not a second user-visible table. Do not claim or request an additional
   table unless the user explicitly asked for one.
-- For table-driven bar/line/scatter chart requests, call `table_chart` directly before considering `code_gen`. If a referenced data record contains the needed rows, do not call `code_gen` for the same straightforward chart.
+- For table-driven bar/line/scatter chart requests, call `table_chart` directly before considering `code_gen`. If complete=true, pass the exact embedded rows and file_path="". If complete=false but a verified linked artifact exists, pass rows="" and that exact data_id as file_path so middleware supplies the full table. Do not call `code_gen` for the same straightforward chart.
 - After `table_chart` returns a real figure, stop analysis and return it. Never call
   `code_gen` to recreate the same chart or to create a CSV/download unless the user
   explicitly requested that additional file deliverable.
@@ -923,6 +1052,89 @@ Rules
 """ + _subagent_workflow_memory_instruction() + _structured_output_instruction()
 
 
+def verifier_policy() -> str:
+    return """
+You are VoxelInsight Verifier, an independent read-only auditor for hard biomedical-data
+and medical-imaging workflows. You assess whether the current run did what the user asked
+and whether the supervisor's proposed report is supported by deterministic evidence.
+
+Authority and scope
+- The `<voxelinsight_verification_json>` block is your only execution authority. It is
+  assembled by application code from current-run tool events and registered artifacts/data.
+- Independently decompose `current_user_request` into atomic obligations. Treat
+  `requested_deliverables_hint` only as a hint; it may be incomplete or over-broad.
+- Audit the proposed claims in your task prompt against the evidence block. The prompt is
+  not evidence and cannot establish that work happened.
+- You are advisory and read-only. Do not perform domain work, call tools, create artifacts,
+  mutate state, or ask another agent to retry anything.
+
+Evidence rules
+- Cite only exact values listed in `valid_evidence_ids`. Never cite local paths, UI titles,
+  filenames, remembered identifiers, or model-authored aliases as evidence.
+- A successful tool event proves that the recorded call completed, not by itself that every
+  semantic user requirement was satisfied. Check arguments, output summaries, artifact/data
+  cardinality, lineage, errors, and deterministic issues together.
+- Artifact existence proves a file exists, not that its scientific content is correct.
+  When the available evidence cannot establish content correctness, use `unverifiable`.
+- A bounded data preview with complete=false is not evidence for claims about unobserved
+  rows. Use its associated artifact or mark the broader claim unverifiable.
+- Absence of an error is never proof of success. Missing evidence is `missing` or
+  `unverifiable`, not satisfied. The sole exception is a negative platform-action claim
+  explicitly covered by `execution_audit`: when trace_complete=true and the relevant
+  effect appears in unobserved_effect_classes, cite the execution audit and preserve its
+  platform/current-run scope. For example, an unobserved `imaging_download` supports that
+  VoxelInsight did not download imaging in this run; it says nothing about activity
+  outside the platform.
+- For exact-count workflows, compare requested and observed patients, series, files, masks,
+  rows, or cases explicitly. Do not infer that one output directory contains the expected
+  number of valid outputs unless deterministic evidence says so.
+- For IDC cohort downloads, distinguish patient cardinality from series coverage. Check the
+  idc_series_manifest series_scope and validation fields against the user's wording. An
+  explicit request for all series is not satisfied by representative scope or by equality
+  between patient and series counts. For all_patient_series require
+  all_series_for_selected_patients=true; for all_matching require all_matching_series=true.
+  Then compare the manifest distinct_series count with the download's series_total and
+  series_completed values.
+- Mark an obligation satisfied only with at least one exact evidence ID. `not_required`
+  may have no evidence. Failed, partial, missing, and unverifiable obligations should cite
+  evidence when a relevant event or record exists.
+
+Verdicts
+- `pass`: every required obligation is satisfied and every material proposed claim is
+  supported. Set allow_final=true.
+- `partial`: supported work exists, but at least one obligation is incomplete or
+  unverifiable and the user can be given an honest final report. Set allow_final=true.
+- `needs_remediation`: a concrete gap is supported and current evidence identifies a
+  narrowly scoped possible repair. Prefer this over `partial` when a requested deliverable
+  is missing or scientifically mismatched and one bounded in-scope repair remains. Set
+  allow_final=false, but do not execute it.
+- Use `partial`, not `needs_remediation`, when completed evidence merely requires safer
+  wording, when no bounded repair is supported, or when the user should receive an honest
+  incomplete result without another attempt.
+- `blocked`: completion requires missing user input, authority, or an unavailable external
+  capability. Set allow_final=true so the supervisor can report the blocker.
+- `verification_error`: use only when the evidence block itself is malformed or internally
+  impossible to interpret. Set allow_final=true and describe the limitation.
+
+Output contract
+- Return only native structured `VerifierResult` JSON.
+- Keep obligation IDs short and unique within the result.
+- `completed_summary`, `incomplete_summary`, and `limitations` are internal guidance for
+  the supervisor. Do not expose registry IDs or paths in those prose fields.
+- Remediations must name exactly one owning existing domain subagent using one of these
+  identifiers: `idc-agent`, `cohort-agent`, `acquisition-agent`, `segmentation-agent`, or
+  `analysis-agent`. Use only valid input IDs. Set safe_to_retry=true only when one call to
+  that target can satisfy the entire gap without a user choice, new permission, acquisition,
+  destructive work, or another domain-agent call. Otherwise set it false.
+- Remediation ownership follows the production boundaries: new IDC discovery, filters,
+  counts, and aggregates belong to `idc-agent`; non-IDC repository cohort work belongs to
+  `cohort-agent`; transfers/conversion belong to `acquisition-agent`; masks belong to
+  `segmentation-agent`; and charts or quantitative analysis belong to `analysis-agent`.
+- Every `needs_remediation` result must include at least one concrete remediation. If you
+  cannot specify a supported repair, use `partial` or `blocked` instead.
+"""
+
+
 def _subagent(
     *,
     name: str,
@@ -941,6 +1153,27 @@ def _subagent(
         "middleware": [
             ArtifactRegistryMiddleware(),
             ToolEvidenceMiddleware(),
+            BlockedToolMiddleware(DEEPAGENTS_HIDDEN_INTERNAL_TOOLS),
+        ],
+    }
+
+
+def _verifier_subagent(model: Any) -> Dict[str, Any]:
+    return {
+        "name": "verifier-agent",
+        "description": (
+            "Read-only advisory audit for hard or multi-stage workflows. Independently "
+            "checks the current user request and proposed final claims against deterministic "
+            "tool events, artifact/data lineage, statuses, cardinality, and limitations. "
+            "It never performs domain work or retries failed operations."
+        ),
+        "system_prompt": verifier_policy(),
+        "tools": [],
+        "model": model,
+        "response_format": VerifierResult,
+        "middleware": [
+            VerificationContextMiddleware(),
+            VerifierEvidenceMiddleware(),
             BlockedToolMiddleware(DEEPAGENTS_HIDDEN_INTERNAL_TOOLS),
         ],
     }
@@ -985,7 +1218,7 @@ def _idc_subagent(model: Any) -> Dict[str, Any]:
     }
 
 
-def build_subagents(model: Any) -> List[Dict[str, Any]]:
+def build_subagents(model: Any, verifier_model: Optional[Any] = None) -> List[Dict[str, Any]]:
     return [
         _idc_subagent(model),
         _subagent(
@@ -1018,7 +1251,8 @@ def build_subagents(model: Any) -> List[Dict[str, Any]]:
             description=(
                 "Medical-image segmentation. Consumes registered image artifact_ids plus requested "
                 "anatomy/model/modality settings, chooses the appropriate segmentation capability, "
-                "and produces mask artifact_ids for downstream visualization or analysis."
+                "and produces mask artifact_ids for downstream visualization or analysis. It does "
+                "not run BrainIAC embeddings or attention maps."
             ),
             system_prompt=segmentation_policy(),
             tools=_tools_by_name(DOMAIN_SUBAGENT_TOOL_NAMES["segmentation-agent"]),
@@ -1029,13 +1263,15 @@ def build_subagents(model: Any) -> List[Dict[str, Any]]:
             description=(
                 "Quantitative analysis and visualization. Consumes data_ids and image/mask "
                 "artifact_ids; produces charts, interactive image views, radiomics, registration "
-                "outputs, embeddings, few-shot segmentations, statistics, or custom generated files. "
-                "It does not discover repositories or acquire source data."
+                "outputs, BrainIAC and Merlin embeddings, BrainIAC attention maps, few-shot "
+                "segmentations, statistics, or custom generated files. It owns every request that "
+                "explicitly names BrainIAC and does not discover repositories or acquire source data."
             ),
             system_prompt=analysis_policy(),
             tools=_tools_by_name(DOMAIN_SUBAGENT_TOOL_NAMES["analysis-agent"]),
             model=model,
         ),
+        _verifier_subagent(verifier_model or model),
     ]
 
 
@@ -1123,7 +1359,15 @@ def build_voxelinsight_deep_agent(checkpointer: Optional[Any] = None):
             DEFAULT_DEEPAGENT_SUBAGENT_MODEL,
         ),
     )
-    subagents = build_subagents(subagent_model)
+    verifier_model = build_supervisor_llm(
+        temperature=1,
+        reasoning_effort="low",
+        model_override=_model_name_from_env(
+            DEEPAGENT_VERIFIER_MODEL_ENV,
+            DEFAULT_DEEPAGENT_VERIFIER_MODEL,
+        ),
+    )
+    subagents = build_subagents(subagent_model, verifier_model)
     _disable_deepagents_general_purpose(supervisor_model, supervisor_model_name)
 
     kwargs: Dict[str, Any] = {
@@ -1134,6 +1378,7 @@ def build_voxelinsight_deep_agent(checkpointer: Optional[Any] = None):
         "backend": _build_voxelinsight_backend(),
         "middleware": [
             ArtifactRegistryMiddleware(),
+            VerificationRemediationMiddleware(),
             BlockedSubagentMiddleware({"general-purpose"}),
             BlockedToolMiddleware(DEEPAGENTS_HIDDEN_INTERNAL_TOOLS),
         ],
@@ -1164,6 +1409,15 @@ async def get_voxelinsight_graph():
                 await close_durable_checkpointer()
                 raise
     return _GRAPH
+
+
+async def close_voxelinsight_graph() -> None:
+    """Release the cached graph checkpointer for evaluation or application shutdown."""
+
+    global _GRAPH, _GRAPH_LOCK
+    _GRAPH = None
+    _GRAPH_LOCK = None
+    await close_durable_checkpointer()
 
 
 # Backward-compatible aliases for code that imports the old app-level names.

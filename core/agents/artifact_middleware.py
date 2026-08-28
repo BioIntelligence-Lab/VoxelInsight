@@ -34,9 +34,106 @@ _EXPLICIT_PATH_ARGUMENTS = {
     "target_images",
 }
 
+_SUMMARY_MAX_DEPTH = 4
+_SUMMARY_MAX_ITEMS = 24
+_SUMMARY_MAX_STRING_CHARS = 500
+_SENSITIVE_ARGUMENT_MARKERS = (
+    "api_key",
+    "apikey",
+    "authorization",
+    "credential",
+    "password",
+    "secret",
+    "token",
+)
+
 
 class ArtifactResolutionError(ValueError):
     """Raised when a tool receives an unusable artifact reference."""
+
+
+def _registry_references(value: Any) -> tuple[list[str], list[str]]:
+    """Collect exact registry references before path-resolution mutates tool args."""
+
+    artifact_ids: set[str] = set()
+    data_ids: set[str] = set()
+
+    def visit(nested: Any) -> None:
+        if isinstance(nested, dict):
+            for item in nested.values():
+                visit(item)
+            return
+        if isinstance(nested, (list, tuple, set)):
+            for item in nested:
+                visit(item)
+            return
+        if not isinstance(nested, str):
+            return
+        if nested.startswith("artifact-"):
+            artifact_ids.add(nested)
+        elif nested.startswith("data-"):
+            data_ids.add(nested)
+
+    visit(value)
+    return sorted(artifact_ids), sorted(data_ids)
+
+
+def _safe_event_value(value: Any, *, key: str = "", depth: int = 0) -> Any:
+    """Bound tool evidence while retaining small, verification-relevant parameters."""
+
+    normalized_key = key.strip().lower()
+    if any(marker in normalized_key for marker in _SENSITIVE_ARGUMENT_MARKERS):
+        return "<redacted>"
+    if normalized_key in {"rows", "dataframe", "df"} and isinstance(
+        value, (list, tuple, set)
+    ):
+        return {"item_count": len(value), "content_omitted": True}
+    if depth >= _SUMMARY_MAX_DEPTH:
+        if isinstance(value, (dict, list, tuple, set)):
+            return "<truncated>"
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, str):
+        if value.startswith(("artifact-", "data-")):
+            return value
+        try:
+            if Path(value).expanduser().is_absolute():
+                return "<local-path>"
+        except (OSError, ValueError):
+            pass
+        if len(value) > _SUMMARY_MAX_STRING_CHARS:
+            return value[: _SUMMARY_MAX_STRING_CHARS - 1] + "…"
+        return value
+    if isinstance(value, dict):
+        items = list(value.items())
+        summary = {
+            str(item_key): _safe_event_value(
+                item_value,
+                key=str(item_key),
+                depth=depth + 1,
+            )
+            for item_key, item_value in items[:_SUMMARY_MAX_ITEMS]
+        }
+        if len(items) > _SUMMARY_MAX_ITEMS:
+            summary["_truncated_items"] = len(items) - _SUMMARY_MAX_ITEMS
+        return summary
+    if isinstance(value, (list, tuple, set)):
+        items = list(value)
+        summary = [
+            _safe_event_value(item, key=key, depth=depth + 1)
+            for item in items[:_SUMMARY_MAX_ITEMS]
+        ]
+        if len(items) > _SUMMARY_MAX_ITEMS:
+            summary.append(f"<truncated {len(items) - _SUMMARY_MAX_ITEMS} item(s)>")
+        return summary
+    return _safe_event_value(str(value), key=key, depth=depth)
+
+
+def _safe_event_mapping(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    summarized = _safe_event_value(value)
+    return summarized if isinstance(summarized, dict) else {}
 
 
 def _is_path_argument(key: str) -> bool:
@@ -275,6 +372,8 @@ class ArtifactRegistryMiddleware(AgentMiddleware):
     def _state_command(
         request: ToolCallRequest,
         result: ToolMessage | Command[Any],
+        *,
+        original_request: ToolCallRequest | None = None,
     ) -> ToolMessage | Command[Any]:
         if not isinstance(result, ToolMessage):
             return result
@@ -336,6 +435,16 @@ class ArtifactRegistryMiddleware(AgentMiddleware):
             tool_call_id=tool_call_id,
             run_id=run_id,
         )
+        evidence_request = original_request or request
+        original_args = evidence_request.tool_call.get("args")
+        input_artifact_ids, input_data_ids = _registry_references(original_args)
+        for event in delta.get("tool_events") or []:
+            if not isinstance(event, dict):
+                continue
+            event["input_artifact_ids"] = input_artifact_ids
+            event["input_data_ids"] = input_data_ids
+            event["arguments_summary"] = _safe_event_mapping(original_args)
+            event["outputs_summary"] = _safe_event_mapping(payload.get("outputs"))
         if tool_name == "verify_artifacts":
             verified_ids = (payload.get("outputs") or {}).get("artifact_ids") or []
             existing_registry = request.state.get("artifact_registry") or {}
@@ -391,6 +500,7 @@ class ArtifactRegistryMiddleware(AgentMiddleware):
         return self._state_command(
             resolved_request,
             handler(resolved_request),
+            original_request=request,
         )
 
     async def awrap_tool_call(
@@ -411,4 +521,5 @@ class ArtifactRegistryMiddleware(AgentMiddleware):
         return self._state_command(
             resolved_request,
             await handler(resolved_request),
+            original_request=request,
         )

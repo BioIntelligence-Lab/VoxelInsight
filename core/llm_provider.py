@@ -1,10 +1,13 @@
 import asyncio
 import os
+import time
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List, Union
 
 from openai import AsyncOpenAI
 from anthropic import AsyncAnthropic
+
+from core.agents.run_metrics import record_sdk_call
 
 try:
     import boto3
@@ -62,8 +65,9 @@ class LLMClient:
         target_reasoning = reasoning_effort if reasoning_effort is not None else getattr(self.settings, "reasoning_effort", None)
 
         if self.provider == "openai":
+            model = getattr(self.settings, "model", "gpt-5.6-sol")
             payload = {
-                "model": getattr(self.settings, "model", "gpt-5.6-sol"),
+                "model": model,
                 "temperature": target_temp,
                 "messages": normalized,
             }
@@ -72,15 +76,32 @@ class LLMClient:
             extra = getattr(self.settings, "extra", None)
             if extra:
                 payload.update(extra)
-            response = await self.client.chat.completions.create(**payload)
+            started_ns = time.perf_counter_ns()
+            try:
+                response = await self.client.chat.completions.create(**payload)
+            except Exception as exc:
+                record_sdk_call(
+                    provider=self.provider,
+                    model=model,
+                    started_ns=started_ns,
+                    error=exc,
+                )
+                raise
+            record_sdk_call(
+                provider=self.provider,
+                model=model,
+                started_ns=started_ns,
+                response=response,
+            )
             return response.choices[0].message.content
 
         if self.provider == "anthropic":
+            model = getattr(self.settings, "model", "claude-sonnet-4-5")
             system_prompt = next((m["content"] for m in normalized if m["role"] == "system"), None)
             user_parts = [m["content"] for m in normalized if m["role"] == "user"]
             user_content = "\n\n".join(user_parts)
             kwargs = {
-                "model": getattr(self.settings, "model", "claude-sonnet-4-5"),
+                "model": model,
                 "max_tokens": getattr(self.settings, "max_tokens", 1024),
                 "temperature": target_temp,
                 "messages": [{"role": "user", "content": user_content}],
@@ -90,13 +111,34 @@ class LLMClient:
                 kwargs.update(extra)
             if system_prompt:
                 kwargs["system"] = system_prompt
-            response = await self.client.messages.create(**kwargs)
+            started_ns = time.perf_counter_ns()
+            try:
+                response = await self.client.messages.create(**kwargs)
+            except Exception as exc:
+                record_sdk_call(
+                    provider=self.provider,
+                    model=model,
+                    started_ns=started_ns,
+                    error=exc,
+                )
+                raise
+            record_sdk_call(
+                provider=self.provider,
+                model=model,
+                started_ns=started_ns,
+                response=response,
+            )
             parts = getattr(response, "content", None)
             if not parts:
                 return None
             return "".join(getattr(part, "text", "") for part in parts if getattr(part, "text", ""))
 
         if self.provider == "bedrock":
+            model = getattr(
+                self.settings,
+                "model",
+                "anthropic.claude-3-5-sonnet-20241022-v2:0",
+            )
             system_blocks = [{"text": m["content"]} for m in normalized if m["role"] == "system" and m["content"]]
 
             bedrock_messages: List[Dict[str, Any]] = []
@@ -117,7 +159,7 @@ class LLMClient:
 
             extra = getattr(self.settings, "extra", None) or {}
             request: Dict[str, Any] = {
-                "modelId": getattr(self.settings, "model", "anthropic.claude-3-5-sonnet-20241022-v2:0"),
+                "modelId": model,
                 "messages": bedrock_messages,
             }
             if system_blocks:
@@ -129,7 +171,23 @@ class LLMClient:
                 }
             request.update(extra)
 
-            response = await asyncio.to_thread(self.client.converse, **request)
+            started_ns = time.perf_counter_ns()
+            try:
+                response = await asyncio.to_thread(self.client.converse, **request)
+            except Exception as exc:
+                record_sdk_call(
+                    provider=self.provider,
+                    model=model,
+                    started_ns=started_ns,
+                    error=exc,
+                )
+                raise
+            record_sdk_call(
+                provider=self.provider,
+                model=model,
+                started_ns=started_ns,
+                response=response,
+            )
             content_blocks = (((response or {}).get("output") or {}).get("message") or {}).get("content") or []
             text_parts = [
                 block.get("text", "")

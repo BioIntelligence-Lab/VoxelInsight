@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, Dict, List, Literal
 
 import pandas as pd
@@ -33,7 +34,16 @@ class TableChartArgs(BaseModel):
         ...,
         description=(
             "Machine-readable table rows as a JSON string encoding a list of JSON "
-            "objects, e.g. '[{\"collection\": \"alpha\", \"patients\": 12}]'."
+            "objects, e.g. '[{\"collection\": \"alpha\", \"patients\": 12}]'. "
+            "Use an empty string when file_path supplies the complete table."
+        ),
+    )
+    file_path: str = Field(
+        default="",
+        description=(
+            "Optional registered CSV, JSON, JSONL, or Parquet artifact/data reference. "
+            "Use this when registry rows are only a bounded preview; middleware resolves "
+            "the reference to its verified file."
         ),
     )
     source_data_id: str = Field(
@@ -114,6 +124,35 @@ def _validate_rows(rows: List[Dict[str, Any]]) -> pd.DataFrame:
     if not all(isinstance(row, dict) for row in rows):
         raise ValueError("rows must be a list of JSON objects.")
     return pd.DataFrame(rows)
+
+
+def _load_table_file(file_path: str) -> pd.DataFrame:
+    path = Path(file_path).expanduser()
+    if not path.exists() or not path.is_file():
+        raise ValueError(f"Chart source artifact does not exist: {path}")
+    lower_name = path.name.lower()
+    if lower_name.endswith(".csv"):
+        return pd.read_csv(path, low_memory=False)
+    if lower_name.endswith((".jsonl", ".ndjson")):
+        return pd.read_json(path, lines=True)
+    if lower_name.endswith(".json"):
+        return pd.read_json(path)
+    if lower_name.endswith((".parquet", ".pq")):
+        return pd.read_parquet(path)
+    raise ValueError(
+        "Unsupported chart source artifact. Expected CSV, JSON, JSONL, or Parquet."
+    )
+
+
+def _chart_dataframe(rows: str, file_path: str) -> pd.DataFrame:
+    if rows.strip():
+        return _validate_rows(_parse_rows(rows))
+    if file_path.strip():
+        dataframe = _load_table_file(file_path)
+        if dataframe.empty:
+            raise ValueError("Chart source artifact contains no rows.")
+        return dataframe
+    raise ValueError("Provide non-empty rows or a registered file_path.")
 
 
 def _require_columns(df: pd.DataFrame, columns: List[str]) -> None:
@@ -242,10 +281,11 @@ def _build_chart(
 @toolify_agent(
     name="table_chart",
     description=(
-        "Create deterministic Plotly charts from explicit table rows. Use this for bar, line, "
-        "and scatter charts when the data rows are already known. The tool does not query data "
-        "sources and does not infer hidden context; pass rows (as a JSON string encoding a list "
-        "of row objects), category/value columns, sorting, labels, and title explicitly. "
+        "Create deterministic Plotly charts from explicit table rows or a registered tabular "
+        "artifact. Use this for bar, line, and scatter charts when the data are already known. "
+        "The tool does not query data sources or infer hidden context; pass rows as JSON, or "
+        "pass file_path as an artifact/data ID when inline registry rows are a bounded preview. "
+        "Also pass category/value columns, sorting, labels, and title explicitly. "
         "category_column always contains labels and value_column always contains numeric "
         "values, regardless of bar orientation."
     ),
@@ -254,6 +294,7 @@ def _build_chart(
 )
 async def table_chart_runner(
     rows: str,
+    file_path: str = "",
     source_data_id: str = "",
     chart_type: str = "bar",
     category_column: str = "",
@@ -270,7 +311,7 @@ async def table_chart_runner(
 ):
     sort_direction = _normalized_sort_direction(sort_direction)
     _validate_options(chart_type, orientation, sort_direction)
-    df = _validate_rows(_parse_rows(rows))
+    df = _chart_dataframe(rows, file_path)
     required = [category_column, value_column] + ([sort_by] if sort_by else [])
     _require_columns(df, [column for column in required if column])
     if not category_column or not value_column:

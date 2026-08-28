@@ -3,8 +3,8 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 import contextlib
 import tempfile
-import chainlit as cl
 
+from core.interactions import confirm_operation, notify_user
 from core.state import Task, TaskResult, ConversationState
 from core.storage import get_run_dir
 
@@ -24,18 +24,17 @@ class MIDRCDownloadAgent:
         timeout_s   = int(kw.get("timeout_s", 3600))
         parallel    = int(kw.get("parallel", 2))
 
-        res = await cl.AskActionMessage(
+        confirmed = await confirm_operation(
+            kind="midrc_download",
             content="Would you like to download files from MIDRC now?",
-            actions=[
-                cl.Action(name="continue", payload={"value": "continue"}, label="✅ Continue"),
-                cl.Action(name="cancel", payload={"value": "cancel"}, label="❌ Cancel"),
-            ],
-        ).send()
+            details={
+                "object_id": object_id,
+                "object_count": len(object_ids or []),
+            },
+        )
 
-        if res and res.get("payload").get("value") == "continue":
-            await cl.Message(
-                content="Starting MIDRC download...",
-            ).send()
+        if confirmed:
+            await notify_user("Starting MIDRC download...")
 
             try:
                 # validate cred path
@@ -99,8 +98,8 @@ class MIDRCDownloadAgent:
                 return TaskResult(output=f"MIDRCDownload error: {e}")
 
         else:
-            await cl.Message(content="MIDRC download cancelled.",).send()
-            return TaskResult(output="MIDRC download was cancelled by the user via the UI. DO NOT REPEAT without checking with user again if needed.", artifacts={})
+            await notify_user("MIDRC download cancelled.")
+            return TaskResult(output="MIDRC download was cancelled. DO NOT REPEAT without checking with the user again if needed.", artifacts={})
 
     # helpers 
     def _snapshot_files(self, dirp: Path) -> set[str]:

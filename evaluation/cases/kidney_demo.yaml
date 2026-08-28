@@ -1,0 +1,22 @@
+experiment_id: kidney_demo_v1
+repetitions: 3
+timeout_s: 1800
+pricing_path: ../pricing.yaml
+
+cases:
+  - id: c4kc_kits_clinical_download
+    turns:
+      - "Let's look at the c4kc_kits dataset on IDC in detail."
+      - "Download the clinical data for this collection."
+    approvals:
+      downloads: approve
+    expected:
+      artifacts: [csv]
+
+  - id: c4kc_kits_sequence_plot
+    turns:
+      - "Create a plot of CT sequences in c4kc_kits with the number of distinct patients having each sequence."
+    expected:
+      artifacts: [plot]
+      subagents: [idc-agent, analysis-agent]
+

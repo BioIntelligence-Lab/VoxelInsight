@@ -20,6 +20,7 @@ OFFICIAL_SKILL_VERSION = "1.6.5"
 OFFICIAL_IDC_INDEX_MIN_VERSION = "0.12.3"
 DEFAULT_MAX_ROWS = 200
 ABSOLUTE_MAX_ROWS = 500
+MAX_MANIFEST_SERIES = 20_000
 
 _IDC_CLIENT: Optional[Any] = None
 
@@ -137,18 +138,39 @@ def _semantic_search_terms(text: str, modality: str = "") -> list[str]:
     return list(dict.fromkeys(term for term in terms if term))
 
 
+def _semantic_term_pattern(term: str) -> str:
+    """Build a boundary-safe pattern with equivalent common ID separators."""
+
+    pieces = re.findall(r"[a-z0-9]+", term.casefold())
+    escaped = r"[-_\s]+".join(re.escape(piece) for piece in pieces)
+    if term.casefold() == "nephro":
+        escaped = r"nephro[a-z0-9]*"
+    return rf"(^|[^a-z0-9]){escaped}([^a-z0-9]|$)"
+
+
 def _semantic_match_sql(columns: list[str], terms: list[str]) -> str:
     def pattern(term: str) -> str:
-        escaped = re.escape(term.casefold())
-        if term.casefold() == "nephro":
-            escaped = r"nephro[a-z0-9]*"
-        return rf"(^|[^a-z0-9]){escaped}([^a-z0-9]|$)"
+        return _semantic_term_pattern(term)
 
     return "(" + " OR ".join(
         f"regexp_matches(LOWER(COALESCE(CAST({column} AS VARCHAR), '')), {_sql_literal(pattern(term))})"
         for term in terms
         for column in columns
     ) + ")"
+
+
+def _collection_id_filter_sql(column: str, collection_id: str) -> str:
+    """Match collection IDs exactly while ignoring case and common separators."""
+
+    normalized = "_".join(re.findall(r"[a-z0-9]+", collection_id.casefold()))
+    if not normalized:
+        raise ValueError("collection_id must contain at least one letter or number.")
+    separator_pattern = _sql_literal(r"[-_\s]+")
+    normalized_column = (
+        f"regexp_replace(LOWER(TRIM(CAST({column} AS VARCHAR))), "
+        f"{separator_pattern}, '_', 'g')"
+    )
+    return f"{normalized_column} = {_sql_literal(normalized)}"
 
 
 def _strip_sql_strings_and_comments(sql: str) -> str:
@@ -265,10 +287,16 @@ def _prepare_tables(client: Any, tables: set[str]) -> None:
             raise RuntimeError(f"IDC table {table_name!r} could not be loaded.")
 
 
-def _execute_readonly_sql(client: Any, sql: str, max_rows: int) -> tuple[pd.DataFrame, str, list[str]]:
+def _execute_readonly_sql(
+    client: Any,
+    sql: str,
+    max_rows: int,
+    *,
+    absolute_max_rows: int = ABSOLUTE_MAX_ROWS,
+) -> tuple[pd.DataFrame, str, list[str]]:
     validated, tables = validate_readonly_sql(sql, _available_tables(client))
     _prepare_tables(client, tables)
-    bounded_rows = max(1, min(int(max_rows), ABSOLUTE_MAX_ROWS))
+    bounded_rows = max(1, min(int(max_rows), int(absolute_max_rows)))
     bounded_sql = f"SELECT * FROM ({validated}) AS voxelinsight_idc_result LIMIT {bounded_rows}"
     frame = client.sql_query(bounded_sql)
     return frame, bounded_sql, sorted(tables)
@@ -543,7 +571,7 @@ async def idc_collection_summary_runner(
     modality: str,
     include_demographics: bool,
 ) -> TaskResult:
-    filters = [f"collection_id = {_sql_literal(collection_id.strip())}"]
+    filters = [_collection_id_filter_sql("collection_id", collection_id)]
     if modality.strip():
         filters.append(f"Modality = {_sql_literal(modality.strip())}")
     where = " AND ".join(filters)
@@ -659,8 +687,9 @@ async def idc_series_search_runner(
             "of examples needed; use limit=1 for a single example series."
         )
     filters = []
+    if collection_id.strip():
+        filters.append(_collection_id_filter_sql("collection_id", collection_id))
     exact = {
-        "collection_id": collection_id,
         "Modality": modality,
         "BodyPartExamined": body_part,
         "PatientID": patient_id,
@@ -772,14 +801,28 @@ class IDCSeriesManifestArgs(BaseModel):
         le=2_147_483_647,
         description="Seed used by deterministic random patient sampling; ignored for first.",
     )
+    series_scope: Literal[
+        "representative",
+        "all_matching",
+        "all_patient_series",
+    ] = Field(
+        default="representative",
+        description=(
+            "Series coverage after selecting patients: representative keeps one matching "
+            "series per patient; all_matching keeps every series matching the supplied "
+            "filters; all_patient_series uses the filters only to select patients and then "
+            "keeps every series for those patients in the collection."
+        ),
+    )
 
 
 @toolify_agent(
     name="idc_series_manifest",
     description=(
-        "Create an exact acquisition manifest with one matching series per distinct patient. "
-        "Use this for IDC downloads, including deterministic random patient samples. It never "
-        "generates viewer URLs and validates requested row and patient cardinality."
+        "Create an exact acquisition manifest for a deterministic patient sample. Supports "
+        "one representative series, all matching series, or all collection series for each "
+        "selected patient. It never generates viewer URLs and validates patient and series "
+        "coverage."
     ),
     args_schema=IDCSeriesManifestArgs,
     timeout_s=180,
@@ -794,8 +837,13 @@ async def idc_series_manifest_runner(
     patient_count: int,
     selection_strategy: Literal["first", "random"],
     random_seed: int,
+    series_scope: Literal[
+        "representative",
+        "all_matching",
+        "all_patient_series",
+    ] = "representative",
 ) -> TaskResult:
-    filters = [f"collection_id = {_sql_literal(collection_id.strip())}"]
+    filters = [_collection_id_filter_sql("collection_id", collection_id)]
     for column, value in {
         "Modality": modality,
         "BodyPartExamined": body_part,
@@ -812,15 +860,21 @@ async def idc_series_manifest_runner(
                 f"LOWER(COALESCE({column}, '')) LIKE "
                 f"LOWER({_sql_literal('%' + value.strip() + '%')})"
             )
-    filters.append("COALESCE(CAST(PatientID AS VARCHAR), '') <> ''")
-    order_expression = "PatientID"
+    filters.extend(
+        [
+            "COALESCE(CAST(PatientID AS VARCHAR), '') <> ''",
+            "COALESCE(CAST(SeriesInstanceUID AS VARCHAR), '') <> ''",
+        ]
+    )
+    patient_order_expression = "PatientID"
     if selection_strategy == "random":
-        order_expression = (
+        patient_order_expression = (
             "MD5(CONCAT(CAST(PatientID AS VARCHAR), "
             f"{_sql_literal(':' + str(int(random_seed)))}) )"
         )
-    sql = f"""
-        WITH ranked_series AS (
+
+    common_ctes = f"""
+        WITH eligible_series AS (
             SELECT
                 collection_id,
                 Modality,
@@ -831,49 +885,140 @@ async def idc_series_manifest_runner(
                 series_size_MB,
                 PatientID,
                 StudyInstanceUID,
-                SeriesInstanceUID,
-                ROW_NUMBER() OVER (
-                    PARTITION BY PatientID
-                    ORDER BY StudyInstanceUID, SeriesInstanceUID
-                ) AS patient_series_rank
+                SeriesInstanceUID
             FROM index
             WHERE {' AND '.join(filters)}
+        ),
+        eligible_patients AS (
+            SELECT DISTINCT PatientID
+            FROM eligible_series
+        ),
+        selected_patients AS (
+            SELECT
+                PatientID,
+                {patient_order_expression} AS patient_selection_key
+            FROM eligible_patients
+            ORDER BY patient_selection_key, PatientID
+            LIMIT {int(patient_count)}
+        )
+    """
+    columns = """
+        collection_id,
+        Modality,
+        BodyPartExamined,
+        StudyDescription,
+        SeriesDescription,
+        instanceCount,
+        series_size_MB,
+        PatientID,
+        StudyInstanceUID,
+        SeriesInstanceUID
+    """
+    if series_scope == "representative":
+        sql = common_ctes + f""",
+        ranked_selected_series AS (
+            SELECT
+                eligible_series.*,
+                selected_patients.patient_selection_key,
+                ROW_NUMBER() OVER (
+                    PARTITION BY eligible_series.PatientID
+                    ORDER BY eligible_series.StudyInstanceUID,
+                             eligible_series.SeriesInstanceUID
+                ) AS patient_series_rank
+            FROM eligible_series
+            JOIN selected_patients USING (PatientID)
         )
         SELECT
-            collection_id,
-            Modality,
-            BodyPartExamined,
-            StudyDescription,
-            SeriesDescription,
-            instanceCount,
-            series_size_MB,
-            PatientID,
-            StudyInstanceUID,
-            SeriesInstanceUID
-        FROM ranked_series
+            {columns}
+        FROM ranked_selected_series
         WHERE patient_series_rank = 1
-        ORDER BY {order_expression}
-        LIMIT {int(patient_count)}
-    """
-    frame, query, tables = _execute_readonly_sql(_client(), sql, patient_count)
+        ORDER BY patient_selection_key, PatientID, StudyInstanceUID, SeriesInstanceUID
+        """
+        query_limit = int(patient_count)
+    elif series_scope == "all_matching":
+        sql = common_ctes + f"""
+        SELECT
+            {columns}
+        FROM eligible_series
+        JOIN selected_patients USING (PatientID)
+        ORDER BY patient_selection_key, PatientID, StudyInstanceUID, SeriesInstanceUID
+        """
+        query_limit = MAX_MANIFEST_SERIES + 1
+    else:
+        selected_collection_filter = _collection_id_filter_sql(
+            "selected_series.collection_id", collection_id
+        )
+        sql = common_ctes + f"""
+        SELECT
+            selected_series.collection_id,
+            selected_series.Modality,
+            selected_series.BodyPartExamined,
+            selected_series.StudyDescription,
+            selected_series.SeriesDescription,
+            selected_series.instanceCount,
+            selected_series.series_size_MB,
+            selected_series.PatientID,
+            selected_series.StudyInstanceUID,
+            selected_series.SeriesInstanceUID
+        FROM index AS selected_series
+        JOIN selected_patients
+          ON selected_series.PatientID = selected_patients.PatientID
+        WHERE {selected_collection_filter}
+          AND COALESCE(CAST(selected_series.SeriesInstanceUID AS VARCHAR), '') <> ''
+        ORDER BY patient_selection_key, selected_series.PatientID,
+                 selected_series.StudyInstanceUID, selected_series.SeriesInstanceUID
+        """
+        query_limit = MAX_MANIFEST_SERIES + 1
+
+    frame, query, tables = _execute_readonly_sql(
+        _client(),
+        sql,
+        query_limit,
+        absolute_max_rows=(
+            ABSOLUTE_MAX_ROWS
+            if series_scope == "representative"
+            else MAX_MANIFEST_SERIES + 1
+        ),
+    )
     distinct_patients = int(frame["PatientID"].nunique()) if "PatientID" in frame else 0
     distinct_series = (
         int(frame["SeriesInstanceUID"].nunique())
         if "SeriesInstanceUID" in frame
         else 0
     )
-    exact = (
-        len(frame) == int(patient_count)
-        and distinct_patients == int(patient_count)
-        and distinct_series == int(patient_count)
+    series_limit_exceeded = len(frame) > MAX_MANIFEST_SERIES
+    unique_series = distinct_series == len(frame)
+    exact_patients = distinct_patients == int(patient_count)
+    exact = exact_patients and unique_series and not series_limit_exceeded
+    if series_scope == "representative":
+        exact = exact and len(frame) == int(patient_count)
+    series_per_patient = (
+        frame.groupby("PatientID")["SeriesInstanceUID"].nunique().astype(int).to_dict()
+        if {"PatientID", "SeriesInstanceUID"}.issubset(frame.columns)
+        else {}
     )
     warnings: list[str] = []
-    if not exact:
+    if not exact_patients:
         warnings.append(
             f"Requested {patient_count} distinct patients but only {distinct_patients} "
-            "matching patients with unique series were available. Do not start acquisition "
+            "matching patients were available. Do not start acquisition "
             "unless this reduced cardinality is acceptable to the user."
         )
+    if not unique_series:
+        warnings.append(
+            "The manifest contains duplicate SeriesInstanceUID rows. Do not start acquisition."
+        )
+    if series_limit_exceeded:
+        warnings.append(
+            f"The selected cohort contains more than {MAX_MANIFEST_SERIES} series, which "
+            "exceeds the supported batch limit. Refine the request before acquisition."
+        )
+    frame = frame.copy()
+    frame["manifest_series_scope"] = series_scope
+    frame["manifest_complete"] = bool(exact)
+    frame["manifest_requested_patient_count"] = int(patient_count)
+    frame["manifest_distinct_patient_count"] = distinct_patients
+    frame["manifest_distinct_series_count"] = distinct_series
     result = _result(
         frame,
         query=query,
@@ -886,10 +1031,21 @@ async def idc_series_manifest_runner(
         requested_patients=int(patient_count),
         distinct_patients=distinct_patients,
         distinct_series=distinct_series,
+        series_per_patient={str(key): int(value) for key, value in series_per_patient.items()},
     )
     result.output["validation"].update(
+        row_limit_applied=series_limit_exceeded,
         requested_cardinality_satisfied=exact,
         one_series_per_patient=(distinct_patients == distinct_series == len(frame)),
+        manifest_complete=exact,
+        unique_series=unique_series,
+        series_limit_exceeded=series_limit_exceeded,
+        manifest_series_limit=MAX_MANIFEST_SERIES,
+        series_scope=series_scope,
+        all_matching_series=(series_scope == "all_matching" and exact),
+        all_series_for_selected_patients=(
+            series_scope == "all_patient_series" and exact
+        ),
         viewer_urls_generated=0,
         selection_strategy=selection_strategy,
         random_seed=int(random_seed),
@@ -942,7 +1098,7 @@ async def idc_series_category_summary_runner(
         raise ValueError(
             "category must be one of: " + ", ".join(sorted(_SERIES_CATEGORY_COLUMNS))
         )
-    filters = [f"collection_id = {_sql_literal(collection_id.strip())}"]
+    filters = [_collection_id_filter_sql("collection_id", collection_id)]
     if modality.strip():
         filters.append(f"Modality = {_sql_literal(modality.strip())}")
     exclude_derived_modalities = category == "SeriesDescription" and not modality.strip()
@@ -1144,7 +1300,7 @@ async def idc_clinical_catalog_runner(collection_id: str, include_columns: bool,
         selected.remove("column_label")
     where = ""
     if collection_id.strip() and "collection_id" in columns:
-        where = f" WHERE collection_id = {_sql_literal(collection_id.strip())}"
+        where = f" WHERE {_collection_id_filter_sql('collection_id', collection_id)}"
     sql = f"SELECT DISTINCT {', '.join(selected)} FROM clinical_index{where} ORDER BY {', '.join(selected)} LIMIT {int(limit)}"
     frame, query, tables = _execute_readonly_sql(client, sql, limit)
     return _result(frame, query=query, tables=tables, expected_columns=["table_name"])

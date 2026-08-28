@@ -12,6 +12,34 @@ VisibleOutputSource = Literal["tool_ui", "tool_outputs", "verified_file"]
 DeliverableStatus = Literal["satisfied", "missing", "failed"]
 IDCValidationStatus = Literal["pass", "warn", "fail"]
 IDCQueryLanguage = Literal["typed", "sql", "python"]
+VerificationVerdict = Literal[
+    "pass",
+    "partial",
+    "needs_remediation",
+    "blocked",
+    "verification_error",
+]
+VerificationObligationStatus = Literal[
+    "satisfied",
+    "partial",
+    "failed",
+    "missing",
+    "unverifiable",
+    "not_required",
+]
+VerificationClaimStatus = Literal[
+    "supported",
+    "overstated",
+    "contradicted",
+    "unverifiable",
+]
+VerificationRemediationTarget = Literal[
+    "idc-agent",
+    "cohort-agent",
+    "acquisition-agent",
+    "segmentation-agent",
+    "analysis-agent",
+]
 
 
 def _require_idc_audit_fields_in_json_schema(schema: Dict[str, Any]) -> None:
@@ -189,6 +217,104 @@ class SubagentResult(BaseModel):
     )
     @classmethod
     def _coerce_null_lists(cls, value: Any) -> Any:
+        if value is None:
+            return []
+        if isinstance(value, dict):
+            return [value]
+        return value
+
+
+class VerificationObligation(BaseModel):
+    """One independently assessed requirement from the current user request."""
+
+    obligation_id: str = Field(
+        ...,
+        description="Stable short identifier unique within this verification result.",
+    )
+    description: str = Field(
+        ...,
+        description="Atomic user requirement or necessary workflow obligation.",
+    )
+    status: VerificationObligationStatus
+    evidence_ids: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Exact current-run event IDs or registered artifact/data IDs supporting the "
+            "assessment. Never invent evidence IDs."
+        ),
+    )
+    explanation: str = Field(
+        default="",
+        description="Concise evidence-bound reason for the assigned status.",
+    )
+
+
+class VerificationClaim(BaseModel):
+    """Assessment of a claim the supervisor intends to report to the user."""
+
+    claim: str
+    status: VerificationClaimStatus
+    evidence_ids: List[str] = Field(default_factory=list)
+    corrected_wording: str = Field(
+        default="",
+        description="Evidence-safe replacement when the original claim is not supported.",
+    )
+
+
+class VerificationRemediation(BaseModel):
+    """Narrowly scoped work that could address a verified gap."""
+
+    target_subagent: VerificationRemediationTarget = Field(
+        ...,
+        description="Exact existing VoxelInsight domain-subagent identifier owning the repair.",
+    )
+    instructions: str = Field(
+        ...,
+        description="Specific repair objective without invented paths or identifiers.",
+    )
+    input_artifact_ids: List[str] = Field(default_factory=list)
+    input_data_ids: List[str] = Field(default_factory=list)
+    safe_to_retry: bool = Field(
+        default=False,
+        description="Whether one bounded retry is supported by current deterministic evidence.",
+    )
+
+
+class VerifierResult(BaseModel):
+    """Read-only, evidence-grounded audit returned by the verifier subagent."""
+
+    verdict: VerificationVerdict
+    allow_final: bool = Field(
+        ...,
+        description=(
+            "Whether it is safe to answer now, including an honest partial or blocked report. "
+            "This is advisory and never directly blocks graph completion."
+        ),
+    )
+    obligations: List[VerificationObligation] = Field(default_factory=list)
+    claim_checks: List[VerificationClaim] = Field(default_factory=list)
+    completed_summary: List[str] = Field(default_factory=list)
+    incomplete_summary: List[str] = Field(default_factory=list)
+    limitations: List[str] = Field(default_factory=list)
+    remediations: List[VerificationRemediation] = Field(
+        default_factory=list,
+        description=(
+            "Concrete supported repairs. At least one is required when verdict is "
+            "needs_remediation; otherwise leave empty unless useful."
+        ),
+    )
+
+    @field_validator(
+        "obligations",
+        "claim_checks",
+        "completed_summary",
+        "incomplete_summary",
+        "limitations",
+        "remediations",
+        mode="before",
+    )
+    @classmethod
+    def _coerce_verifier_lists(cls, value: Any) -> Any:
         if value is None:
             return []
         if isinstance(value, dict):
