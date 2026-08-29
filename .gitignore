@@ -3,3 +3,5 @@
 __pycache__/
 *.py[cod]
 evaluation_results/
+/perm_files/
+/tmp/
