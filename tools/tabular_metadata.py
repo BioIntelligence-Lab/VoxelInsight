@@ -52,6 +52,7 @@ def table_schema(dataframe: pd.DataFrame) -> List[Dict[str, Any]]:
             "name": str(column),
             "dtype": str(dataframe[column].dtype),
             "non_null": int(dataframe[column].notna().sum()),
+            "missing": int(dataframe[column].isna().sum()),
         }
         for column in dataframe.columns
     ]

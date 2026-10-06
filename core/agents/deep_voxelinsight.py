@@ -307,6 +307,25 @@ def _load_ts_mappings_for_prompt() -> str:
     return "\n".join(lines) if lines else "(No TotalSegmentator mappings available.)"
 
 
+def _load_monai_catalog_for_prompt() -> str:
+    """Compact list of the MONAI bundles the monai tool can run."""
+    path = REPO_ROOT / "Data" / "monai_bundles_instructions.txt"
+    lines: List[str] = []
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            for row in csv.DictReader(line for line in f if line.strip()):
+                bundle = str(row.get("bundle_dir", "")).strip()
+                if bundle:
+                    lines.append(
+                        f"- {bundle}: {row.get('bundle_name', '').strip()}; "
+                        f"input {row.get('input_type', '').strip()}; "
+                        f"output {row.get('output_channels', '').strip()}"
+                    )
+    except Exception:
+        return "(No MONAI bundle catalog available.)"
+    return "\n".join(lines) if lines else "(No MONAI bundle catalog available.)"
+
+
 def main_policy() -> str:
     return """
 You are the top-level VoxelInsight workflow orchestrator. Coordinate specialized
@@ -334,12 +353,14 @@ Operating model
   Do not emit a progress sentence before the final answer or after the requested output is rendered; do not expose raw tool arguments, hidden reasoning, local paths, or implementation details.
 
 Stable domain boundaries
-- `cohort-agent` discovers and summarizes repository metadata. It produces grounded
-  answers, compact tables, viewer references, repository identifiers, and explicitly
-  requested clinical-table files.
-- `idc-agent` is the authoritative specialist for all new Imaging Data Commons
-  discovery, cohort definition, IDC metadata/clinical-schema queries, versioned counts,
-  and IDC viewer references. Prefer it over cohort-agent whenever the repository is IDC.
+- `cohort-agent` discovers and summarizes metadata for non-IDC repositories (MIDRC, BIH,
+  and other indexed sources). It produces grounded answers, compact tables, repository
+  identifiers, and explicitly requested clinical-table files. For IDC its only role is
+  downloading a clinical-table file for a collection that `idc-agent` already identified.
+- `idc-agent` exclusively owns every Imaging Data Commons metadata question: collection
+  discovery, patient/study/series/modality counts, cohort definition and manifests
+  (including seeded sampling), IDC metadata/clinical-schema queries, and IDC viewer
+  references. Never send an IDC count, lookup, summary, or manifest to cohort-agent.
 - `acquisition-agent` acquires or converts data. It consumes repository identifiers or
   existing file artifacts and produces staged imaging/file artifacts.
 - `segmentation-agent` consumes image artifacts and produces segmentation artifacts.
@@ -625,7 +646,10 @@ def cohort_policy() -> str:
 You are VoxelInsight Cohort, a specialized subagent for dataset metadata and cohort discovery.
 
 Scope
-- Handle IDC, MIDRC, BIH, TCIA, AIMI, NIHCC, and ACRdart metadata questions.
+- Handle MIDRC, BIH, TCIA, AIMI, NIHCC, and ACRdart metadata questions.
+- For IDC, only download a requested clinical-table file for a collection that is already
+  identified. Do not answer IDC counts, collection summaries, series lookups, or cohort
+  manifests; return no_action with `route: idc-agent` if asked to.
 - Identify collections, patients, studies, series, and modalities from repository imaging
   metadata. Discover clinical tables and clinical schemas only through
   `clinical_data_download`.
@@ -908,6 +932,11 @@ Scope
 Tool selection
 - Prefer `imaging` for TotalSegmentator-style anatomical segmentation requests.
 - Prefer `monai` when the user asks for MONAI, a MONAI model, or a bundle-specific workflow.
+- Also use `monai` when the requested output matches a bundle in the MONAI catalog below
+  and TotalSegmentator cannot produce it (for example prostate zonal anatomy on T2 MRI,
+  which total_mr only provides as a single whole-prostate label). Name the exact
+  bundle_dir in the tool instructions. Do not return `unsupported:` for a request that a
+  catalog bundle covers.
 - Use `nnunet` when the user explicitly requests nnU-Net or requests breast-tumor or
   brain-tumor segmentation supported by the configured models.
 - Keep tool instructions concise but include exact artifact_ids and enough detail to avoid input-shape ambiguity.
@@ -942,8 +971,13 @@ TotalSegmentator contract for `imaging`
 - Never invent task names or ROI values outside the mapping table.
 - Example: for "segment the liver using TotalSegmentator fast mode", call `imaging` once with task_name="total", roi_subset="liver", fast=true, and the provided file path.
 - Example: use `liver_segments` only when the user asks for Couinaud/liver segment subdivision, not for a whole-liver mask.
+- Group names such as "lungs", "ribs", "vertebrae", or "adrenal glands" may be passed as
+  given; the tool expands them to the individual labels in the mapping table.
 - Allowed mappings:
 {_load_ts_mappings_for_prompt()}
+
+MONAI bundle catalog for `monai`
+{_load_monai_catalog_for_prompt()}
 
 Tool result handling
 - A successful segmentation result has ok=true and output artifacts such as segmentations, segmentations_map, files, nifti_paths, output_dir, or output_root.
@@ -964,6 +998,9 @@ Final response
 - Return the exact segmentation artifact_ids registered by middleware.
 - On success, return ok and a terse summary. Otherwise use the shared capability outcome
   contract and stop after the classified outcome.
+- When the tool reports `empty_masks`, the summary must state `num_nonempty` of `num_masks`
+  and name the empty structures as outside the field of view; never describe them as
+  generated or segmented.
 {_subagent_workflow_memory_instruction()}
 {_structured_output_instruction()}
 """
@@ -1224,11 +1261,13 @@ def build_subagents(model: Any, verifier_model: Optional[Any] = None) -> List[Di
         _subagent(
             name="cohort-agent",
             description=(
-                "Repository metadata and cohort discovery. Use for grounded counts, tables, "
-                "collection/patient/study/series lookup, viewer references, clinical-table "
-                "discovery, or identifiers required before acquisition. Produces scalar answers, "
-                "data_ids, repository identifiers, and requested clinical-table files; it does "
-                "not acquire imaging files."
+                "Metadata and cohort discovery for non-IDC repositories (MIDRC, BIH, and other "
+                "indexed sources): grounded counts, tables, collection/patient/study/series lookup, "
+                "and identifiers required before acquisition. For IDC it only downloads a "
+                "requested clinical-table file for a collection already identified by idc-agent; "
+                "it does not answer IDC counts, summaries, lookups, or manifests. Produces scalar "
+                "answers, data_ids, repository identifiers, and requested clinical-table files; "
+                "it does not acquire imaging files."
             ),
             system_prompt=cohort_policy(),
             tools=_tools_by_name(DOMAIN_SUBAGENT_TOOL_NAMES["cohort-agent"]),

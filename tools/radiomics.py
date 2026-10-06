@@ -1,6 +1,7 @@
 import os
 import json
 import tempfile
+from pathlib import Path
 from typing import Optional, List, Dict, Any
 
 import pandas as pd
@@ -75,6 +76,15 @@ class RadiomicsAgent:
         }
         out = run_user_code(code, local_env)
         res = out.get("res_query")
+
+        csv_paths = sorted(str(path) for path in Path(out_dir).rglob("*.csv"))
+        if csv_paths:
+            if not isinstance(res, dict):
+                res = {"text": res} if res is not None else {}
+            res["table_data"] = [
+                {"name": Path(path).stem, "dataframe": pd.read_csv(path), "artifact_path": path, "visibility": "user"}
+                for path in csv_paths
+            ]
 
         artifacts: Dict[str, Any] = {
             "code": code,

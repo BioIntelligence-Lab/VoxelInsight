@@ -145,6 +145,12 @@ async def tabular_inspection_runner(
         ),
         "row_count": int(len(dataframe)),
         "column_schema": table_schema(dataframe),
+        "columns_with_missing": int(dataframe.isna().any().sum()),
+        "missing_by_column": {
+            str(column): int(count)
+            for column, count in dataframe.isna().sum().sort_values(ascending=False).items()
+            if count > 0
+        },
         "demographic_fields": demographics,
         "resolved_distribution_column": resolved_distribution_column,
         "unique_id_column": resolved_unique_id_column,

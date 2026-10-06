@@ -22,6 +22,14 @@ except Exception:
 TOOL_ENVELOPE_SCHEMA_VERSION = "voxelinsight.tool-result.v1"
 ARTIFACT_REGISTRY_SCHEMA_VERSION = "voxelinsight.artifact-registry.v1"
 
+STATE_CONTEXT_MAX_CHARS = 20_000
+STATE_CONTEXT_PREVIEW_RECORDS = 3
+STATE_CONTEXT_PREVIEW_ROWS = 10
+STATE_CONTEXT_PREVIEW_CHARS = 2_500
+STATE_CONTEXT_MAX_COLUMNS = 80
+STATE_CONTEXT_MAX_METADATA_ITEMS = 20
+STATE_CONTEXT_MAX_STRING_CHARS = 500
+
 ToolStatus = Literal["ok", "partial", "error", "no_action"]
 ArtifactStatus = Literal["verified", "missing", "invalid", "unverified"]
 ArtifactKind = Literal[
@@ -591,24 +599,287 @@ def registry_delta_from_payload(
     }
 
 
-def state_context_for_model(state: Dict[str, Any], *, max_records: int = 40) -> str:
-    artifacts = list((state.get("artifact_registry") or {}).values())[-max_records:]
-    data_records = list((state.get("data_registry") or {}).values())[-max_records:]
-    context = {
-        "current_run_id": state.get("current_run_id", ""),
-        "current_user_request": state.get("current_user_request", ""),
-        "uploaded_files": state.get("uploaded_files", []),
-        "artifacts": artifacts,
-        "data": data_records,
+def _state_context_value(value: Any, *, depth: int = 0) -> Any:
+    """Bound optional registry metadata without changing durable state."""
+
+    safe_value = json_safe(value)
+    if isinstance(safe_value, str):
+        if len(safe_value) > STATE_CONTEXT_MAX_STRING_CHARS:
+            return safe_value[: STATE_CONTEXT_MAX_STRING_CHARS - 1] + "…"
+        return safe_value
+    if safe_value is None or isinstance(safe_value, (bool, int, float)):
+        return safe_value
+    if depth >= 3:
+        if isinstance(safe_value, dict):
+            return {"item_count": len(safe_value), "content_omitted": True}
+        if isinstance(safe_value, list):
+            return {"item_count": len(safe_value), "content_omitted": True}
+    if isinstance(safe_value, dict):
+        items = list(safe_value.items())
+        bounded = {
+            str(key): _state_context_value(item, depth=depth + 1)
+            for key, item in items[:STATE_CONTEXT_MAX_METADATA_ITEMS]
+        }
+        if len(items) > STATE_CONTEXT_MAX_METADATA_ITEMS:
+            bounded["_omitted_items"] = len(items) - STATE_CONTEXT_MAX_METADATA_ITEMS
+        return bounded
+    if isinstance(safe_value, list):
+        bounded = [
+            _state_context_value(item, depth=depth + 1)
+            for item in safe_value[:STATE_CONTEXT_MAX_METADATA_ITEMS]
+        ]
+        if len(safe_value) > STATE_CONTEXT_MAX_METADATA_ITEMS:
+            bounded.append(
+                {"omitted_items": len(safe_value) - STATE_CONTEXT_MAX_METADATA_ITEMS}
+            )
+        return bounded
+    return str(safe_value)
+
+
+def _state_context_rows(rows: Any) -> List[Dict[str, Any]]:
+    if not isinstance(rows, list):
+        return []
+    preview: List[Dict[str, Any]] = []
+    used_chars = 2
+    for raw_row in rows[:STATE_CONTEXT_PREVIEW_ROWS]:
+        if not isinstance(raw_row, dict):
+            continue
+        row = _state_context_value(raw_row)
+        if not isinstance(row, dict):
+            continue
+        encoded = json.dumps(row, separators=(",", ":"), default=str)
+        if used_chars + len(encoded) + 1 > STATE_CONTEXT_PREVIEW_CHARS:
+            break
+        preview.append(row)
+        used_chars += len(encoded) + 1
+    return preview
+
+
+def _state_context_artifact(record: Dict[str, Any]) -> Dict[str, Any]:
+    """Expose model-relevant artifact identity while keeping paths internal."""
+
+    return {
+        "artifact_id": str(record.get("artifact_id") or ""),
+        "kind": str(record.get("kind") or ""),
+        "role": str(record.get("role") or ""),
+        "name": _state_context_value(str(record.get("name") or "")),
+        "mime_type": _state_context_value(str(record.get("mime_type") or "")),
+        "source_tool": _state_context_value(str(record.get("source_tool") or "")),
+        "source_call_id": str(record.get("source_call_id") or ""),
+        "run_id": str(record.get("run_id") or ""),
+        "status": str(record.get("status") or ""),
+        "downloadable": bool(record.get("downloadable", True)),
+        "metadata": _state_context_value(record.get("metadata") or {}),
     }
+
+
+def _state_context_data(
+    record: Dict[str, Any],
+    *,
+    include_rows: bool,
+) -> Dict[str, Any]:
+    source_rows = record.get("rows") or []
+    rows = _state_context_rows(source_rows) if include_rows else []
+    stored_preview_rows = len(source_rows) if isinstance(source_rows, list) else 0
+    return {
+        "data_id": str(record.get("data_id") or ""),
+        "kind": str(record.get("kind") or ""),
+        "visibility": str(record.get("visibility") or ""),
+        "name": _state_context_value(str(record.get("name") or "")),
+        "source_tool": _state_context_value(str(record.get("source_tool") or "")),
+        "source_call_id": str(record.get("source_call_id") or ""),
+        "run_id": str(record.get("run_id") or ""),
+        "nrows": int(record.get("nrows") or 0),
+        "complete": bool(record.get("complete", False)),
+        "artifact_id": str(record.get("artifact_id") or ""),
+        "columns": [
+            str(_state_context_value(str(column)))
+            for column in (record.get("columns") or [])[:STATE_CONTEXT_MAX_COLUMNS]
+        ],
+        "rows": rows,
+        "context_preview": {
+            "included": bool(rows),
+            "row_count": len(rows),
+            "stored_preview_row_count": stored_preview_rows,
+            "complete": bool(record.get("complete", False))
+            and len(rows) == int(record.get("nrows") or 0),
+        },
+        "metadata": _state_context_value(record.get("metadata") or {}),
+    }
+
+
+def state_context_for_model(
+    state: Dict[str, Any],
+    *,
+    max_records: int = 40,
+    max_chars: int = STATE_CONTEXT_MAX_CHARS,
+) -> str:
+    """Render bounded registry context while preserving exact durable records."""
+
+    artifact_records = [
+        record
+        for record in (state.get("artifact_registry") or {}).values()
+        if isinstance(record, dict)
+    ]
+    data_records = [
+        record
+        for record in (state.get("data_registry") or {}).values()
+        if isinstance(record, dict)
+    ]
+    selected_artifacts = artifact_records[-max_records:]
+    selected_data = data_records[-max_records:]
+    current_run_id = str(state.get("current_run_id") or "")
+
+    preview_ids: set[str] = set()
+    preview_candidates: List[Dict[str, Any]] = []
+    preview_candidate_ids: set[str] = set()
+    for record in reversed(selected_data):
+        data_id = str(record.get("data_id") or "")
+        if current_run_id and str(record.get("run_id") or "") == current_run_id:
+            preview_candidates.append(record)
+            preview_candidate_ids.add(data_id)
+    for record in reversed(selected_data):
+        data_id = str(record.get("data_id") or "")
+        if data_id not in preview_candidate_ids:
+            preview_candidates.append(record)
+            preview_candidate_ids.add(data_id)
+    for record in preview_candidates[:STATE_CONTEXT_PREVIEW_RECORDS]:
+        data_id = str(record.get("data_id") or "")
+        if data_id:
+            preview_ids.add(data_id)
+
+    artifacts = [_state_context_artifact(record) for record in selected_artifacts]
+    data = [
+        _state_context_data(
+            record,
+            include_rows=str(record.get("data_id") or "") in preview_ids,
+        )
+        for record in selected_data
+    ]
+    uploaded_files = [
+        _state_context_value(value)
+        for value in list(state.get("uploaded_files") or [])[-20:]
+    ]
+    current_user_request = _state_context_value(
+        str(state.get("current_user_request") or "")
+    )
+
+    def build_context() -> Dict[str, Any]:
+        return {
+            "current_run_id": current_run_id,
+            "current_user_request": current_user_request,
+            "uploaded_files": uploaded_files,
+            "registry_summary": {
+                "artifact_count": len(artifact_records),
+                "data_record_count": len(data_records),
+                "artifacts_in_context": len(artifacts),
+                "data_records_in_context": len(data),
+                "omitted_artifacts": len(artifact_records) - len(artifacts),
+                "omitted_data_records": len(data_records) - len(data),
+                "row_previews_in_context": sum(
+                    1
+                    for record in data
+                    if (record.get("context_preview") or {}).get("included")
+                ),
+            },
+            "artifacts": artifacts,
+            "data": data,
+        }
+
+    def encode_context() -> str:
+        return json.dumps(
+            json_safe(build_context()),
+            separators=(",", ":"),
+            default=str,
+        )
+
+    budget = max(2_000, int(max_chars))
+    encoded = encode_context()
+
+    # Prefer a few relevant previews over metadata-only records when the budget is tight.
+    while len(encoded) > budget:
+        removable_index = next(
+            (
+                index
+                for index, record in enumerate(data)
+                if not (record.get("context_preview") or {}).get("included")
+            ),
+            None,
+        )
+        if removable_index is None:
+            break
+        data.pop(removable_index)
+        encoded = encode_context()
+
+    while len(encoded) > budget and artifacts:
+        removable_index = next(
+            (
+                index
+                for index, record in enumerate(artifacts)
+                if str(record.get("role") or "") != "input"
+            ),
+            0,
+        )
+        artifacts.pop(removable_index)
+        encoded = encode_context()
+
+    # Rows remain optional because exact data is still resolvable by data_id.
+    for record in data:
+        if len(encoded) <= budget:
+            break
+        preview = record.get("context_preview") or {}
+        if preview.get("included"):
+            record["rows"] = []
+            preview["included"] = False
+            preview["row_count"] = 0
+            preview["complete"] = False
+            encoded = encode_context()
+
+    # As a final fallback, retain the newest data identity record.
+    while len(encoded) > budget and len(data) > 1:
+        data.pop(0)
+        encoded = encode_context()
+
+    if len(encoded) > budget:
+        current_user_request = _state_context_value(
+            str(current_user_request)[:1_000]
+        )
+        uploaded_files = uploaded_files[-5:]
+        encoded = encode_context()
+
+    # Extremely large user-controlled labels must not defeat the hard prompt budget.
+    if len(encoded) > budget:
+        for record in data:
+            record["rows"] = []
+            record["columns"] = []
+            record["metadata"] = {}
+            preview = record.get("context_preview") or {}
+            preview.update(included=False, row_count=0, complete=False)
+        for record in artifacts:
+            record["metadata"] = {}
+        encoded = encode_context()
+    while len(encoded) > budget and data:
+        data.pop(0)
+        encoded = encode_context()
+    while len(encoded) > budget and artifacts:
+        artifacts.pop(0)
+        encoded = encode_context()
+    if len(encoded) > budget:
+        current_user_request = ""
+        uploaded_files = []
+        encoded = encode_context()
+
     return (
         "\n\n<voxelinsight_state_json>\n"
-        + json.dumps(json_safe(context), indent=2)
+        + encoded
         + "\n</voxelinsight_state_json>\n"
         "This state block is authoritative and is maintained by code. Pass exact "
         "artifact_id/data_id values from it to tools and subagents; deterministic middleware "
-        "resolves registered references. Never pass, copy, reconstruct, shorten, join, or "
-        "invent local filesystem paths, even when a registry record contains a path. Never "
+        "resolves registered references from durable state. The context may omit older "
+        "records and table rows to stay within its prompt budget; use the registry summary "
+        "and exact IDs shown here, and pass a data_id/artifact_id to downstream tools when "
+        "full content is required. Never pass, copy, reconstruct, shorten, join, or invent "
+        "local filesystem paths. Never "
         "substitute a PatientID, DICOM UID, filename, UI title, or model-authored alias for an "
         "artifact_id/data_id. Use exact table rows only when a tool explicitly requires scalar "
         "values rather than a data_id. Refer to produced outputs by their registered IDs in "

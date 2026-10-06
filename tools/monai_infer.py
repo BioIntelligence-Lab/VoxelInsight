@@ -199,11 +199,10 @@ class MONAIAgent:
         artifacts: Dict[str, Any] = {
             "code": code,
             "output_dir": out_dir,
-            "image_paths": image_paths,
         }
 
         if isinstance(res, dict):
-            for k in ("segmentations", "segmentations_map", "files", "nifti_paths", "output_dir", "image_paths"):
+            for k in ("segmentations", "segmentations_map", "files", "nifti_paths", "output_dir"):
                 if k in res:
                     artifacts[k] = res[k]
 

@@ -113,6 +113,7 @@ class ImagingAgent:
 
     def __init__(self, ct_mappings: str):
         self.ct_mappings = ct_mappings
+        self.canonical_roi_names: Dict[str, str] = {}
         self.allowed_rois_by_task = self._load_allowed_rois()
 
     def _load_allowed_rois(self) -> Dict[str, set[str]]:
@@ -128,15 +129,34 @@ class ImagingAgent:
                 reader = csv.DictReader(f, delimiter="\t")
                 for row in reader:
                     task = str(row.get("task_name", "")).strip().lower()
-                    roi = str(row.get("roi_subset", "")).strip().lower()
+                    original_roi = str(row.get("roi_subset", "")).strip()
+                    roi = original_roi.lower()
                     if not task or not roi:
                         continue
                     allowed.setdefault(task, set()).add(roi)
+                    # TotalSegmentator label names are case-sensitive (e.g. vertebrae_C1).
+                    self.canonical_roi_names[roi] = original_roi
         return allowed
 
     @staticmethod
     def _normalize_roi_name(value: str) -> str:
         return value.strip().lower().replace(" ", "_").replace("-", "_")
+
+    @staticmethod
+    def _empty_mask_names(paths: List[str]) -> List[str]:
+        """Names of masks with no foreground voxels (structure outside the field of view)."""
+        import nibabel as nib
+        import numpy as np
+
+        empty: List[str] = []
+        for path in paths:
+            try:
+                if not np.asanyarray(nib.load(path).dataobj).any():
+                    name = pathlib.Path(path).name
+                    empty.append(name[:-7] if name.endswith(".nii.gz") else pathlib.Path(name).stem)
+            except Exception:
+                continue
+        return empty
 
     @staticmethod
     def _mask_name(path: str) -> str:
@@ -155,13 +175,37 @@ class ImagingAgent:
             "kidney": ("kidney_left", "kidney_right"),
             "kidneys": ("kidney_left", "kidney_right"),
         }
+        # Group names that map to label families in the task's own mapping table.
+        group_prefixes = {
+            "lung": "lung_", "lungs": "lung_",
+            "rib": "rib_", "ribs": "rib_",
+            "vertebra": "vertebrae_", "vertebrae": "vertebrae_", "spine": "vertebrae_",
+            "cervical_vertebrae": "vertebrae_c", "thoracic_vertebrae": "vertebrae_t",
+            "lumbar_vertebrae": "vertebrae_l",
+        }
         expanded: List[str] = []
         for roi in rois:
             targets = aliases.get(roi)
-            if targets and all(target in allowed for target in targets):
+            if roi in allowed:
+                expanded.append(roi)
+            elif targets and all(target in allowed for target in targets):
                 expanded.extend(targets)
             else:
-                expanded.append(roi)
+                # "lungs" -> lung_left/lung_right, "adrenal_glands" -> adrenal_gland_left/right
+                stems = [roi, roi[:-1]] if roi.endswith("s") else [roi]
+                bilateral = next(
+                    ([f"{stem}_left", f"{stem}_right"] for stem in stems
+                     if f"{stem}_left" in allowed and f"{stem}_right" in allowed),
+                    None,
+                )
+                prefix = group_prefixes.get(roi)
+                members = sorted(name for name in allowed if prefix and name.startswith(prefix))
+                if bilateral:
+                    expanded.extend(bilateral)
+                elif members:
+                    expanded.extend(members)
+                else:
+                    expanded.append(roi)
         return expanded
 
     def _validate_mapping_inputs(
@@ -294,7 +338,7 @@ class ImagingAgent:
                 "--task", task_name,
             ]
             if requested_rois:
-                cmd += ["--roi_subset"] + requested_rois
+                cmd += ["--roi_subset"] + [self.canonical_roi_names.get(r, r) for r in requested_rois]
 
             if fast:
                 cmd += ["--fast"]
@@ -342,6 +386,7 @@ class ImagingAgent:
 
             state.memory["segmentations"] = seg_paths
             state.memory["segmentations_map"] = seg_map
+            empty_masks = self._empty_mask_names(seg_paths)
 
             summary = {
                 "agent": "imaging",
@@ -350,7 +395,9 @@ class ImagingAgent:
                 "requested_rois": requested_rois,
                 "output_dir": out_dir,
                 "num_masks": len(seg_paths),
-                "matched": seg_map,
+                "num_nonempty": len(seg_paths) - len(empty_masks),
+                "empty_masks": empty_masks,
+                "matched": seg_map if len(seg_map) <= 20 else {"count": len(seg_map), "first": sorted(seg_map)[:10]},
             }
             await update_progress(100, "TotalSegmentator complete", status="completed")
             return TaskResult(
@@ -483,7 +530,7 @@ class ImagingAgent:
                     "--task", task_name,
                 ]
                 if requested_rois:
-                    cmd += ["--roi_subset"] + requested_rois
+                    cmd += ["--roi_subset"] + [self.canonical_roi_names.get(r, r) for r in requested_rois]
                 if fast:
                     cmd += ["--fast"]
 
@@ -555,6 +602,7 @@ class ImagingAgent:
                             "segmentations": list(seg_map.values()),
                             "error": f"Requested masks were not produced: {missing_rois}",
                         }
+                empty_masks = self._empty_mask_names(seg_paths)
                 if not requested_rois and seg_paths:
                     for pth in seg_paths:
                         seg_map[os.path.splitext(os.path.basename(pth))[0]] = pth
@@ -565,6 +613,8 @@ class ImagingAgent:
                     "status": "ok",
                     "output_dir": case_dir,
                     "num_masks": len(seg_paths),
+                    "num_nonempty": len(seg_paths) - len(empty_masks),
+                    "empty_masks": empty_masks,
                     "matched": seg_map,
                     "segmentations": seg_paths,
                 }
@@ -640,7 +690,21 @@ class ImagingAgent:
                 "completed": completed,
                 "failed": failed,
                 "max_concurrency": max_concurrency,
-                "per_input": [row for row in per_input if row is not None],
+                "masks_per_case": {
+                    str(row.get("input_name")): int(row.get("num_masks") or 0)
+                    for row in per_input
+                    if row is not None
+                },
+                "per_input": [
+                    {
+                        key: row[key]
+                        for key in ("case_id", "input_name", "status", "num_masks", "num_nonempty", "empty_masks", "error")
+                        if key in row
+                    }
+                    | {"masks_matched": len(row.get("matched") or {})}
+                    for row in per_input
+                    if row is not None
+                ],
             }
             errors = [
                 f"{row.get('input_name')}: {row.get('error')}"

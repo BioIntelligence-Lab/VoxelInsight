@@ -220,7 +220,16 @@ def _available_tables(client: Any) -> set[str]:
         if getattr(client, table_name, None) is not None:
             tables.add(table_name)
     tables.update({"index", "prior_versions_index"})
+    tables.update(_clinical_table_names(client))
     return tables
+
+
+def _clinical_table_names(client: Any) -> set[str]:
+    """Short names of clinical tables, available once clinical_index is loaded."""
+    clinical = getattr(client, "clinical_index", None)
+    if not isinstance(clinical, pd.DataFrame) or "short_table_name" not in clinical.columns:
+        return set()
+    return {str(name) for name in clinical["short_table_name"].dropna().unique()}
 
 
 def _get_index_schema(client: Any, table_name: str) -> dict[str, Any]:
@@ -280,7 +289,16 @@ def _canonical_table_name(client: Any, lower_name: str) -> str:
 
 
 def _prepare_tables(client: Any, tables: set[str]) -> None:
+    clinical_tables = {name.lower(): name for name in _clinical_table_names(client)}
     for lower_name in sorted(tables - {"index", "prior_versions_index"}):
+        if lower_name in clinical_tables:
+            table_name = clinical_tables[lower_name]
+            frame = client.get_clinical_table(table_name)
+            connection = getattr(client, "_duckdb_conn", None)
+            if frame is None or connection is None:
+                raise RuntimeError(f"IDC clinical table {table_name!r} could not be loaded.")
+            connection.register(table_name, frame)
+            continue
         table_name = _canonical_table_name(client, lower_name)
         client.fetch_index(table_name)
         if getattr(client, table_name, None) is None:
@@ -1316,6 +1334,8 @@ class IDCSQLQueryArgs(BaseModel):
     name="idc_sql_query",
     description=(
         "Execute a validated read-only SQL query over authoritative idc-index tables. "
+        "Clinical tables listed by idc_clinical_catalog can also be queried by their "
+        "short_table_name (for example SELECT COUNT(*) FROM c4kc_kits_clinical). "
         "External-file functions, mutations, multiple statements, and unknown tables are blocked."
     ),
     args_schema=IDCSQLQueryArgs,
