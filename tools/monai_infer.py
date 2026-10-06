@@ -83,6 +83,27 @@ def run_monai_bundle(
     return result
 
 
+def _save_pred_as_nifti(pred, out_path):
+    arr = np.asarray(pred)
+    if arr.dtype == np.int64:
+        arr = arr.astype(np.uint8)
+    aff = getattr(pred, "affine", np.eye(4))
+    nib.save(nib.Nifti1Image(arr, aff), out_path)
+
+
+def _normalize_to_HWD(x):
+    if isinstance(x, torch.Tensor):
+        x = x.detach().cpu().numpy()
+    x = np.asarray(x)
+    if x.ndim == 5 and x.shape[0] == 1:  # (B,C,H,W,D)
+        x = x.squeeze(0)
+    if x.ndim == 4:  # (C,H,W,D)
+        x = x[0] if x.shape[0] == 1 else x.argmax(axis=0).astype(np.uint8)
+    elif x.ndim != 3:
+        raise ValueError(f"Unexpected pred shape {x.shape}")
+    return x
+
+
 class MONAIAgent:
     name = "monai"
     model = "gpt-5.6-sol"
@@ -156,25 +177,6 @@ class MONAIAgent:
         code = extract_code_block(content)
 
         print("MONAI AGENT GENERATED CODE:\n", code)
-
-        def _save_pred_as_nifti(pred, out_path):
-            arr = np.asarray(pred)
-            if arr.dtype == np.int64:
-                arr = arr.astype(np.uint8)
-            aff = getattr(pred, "affine", np.eye(4))
-            nib.save(nib.Nifti1Image(arr, aff), out_path)
-
-        def _normalize_to_HWD(x):
-            if isinstance(x, torch.Tensor):
-                x = x.detach().cpu().numpy()
-            x = np.asarray(x)
-            if x.ndim == 5 and x.shape[0] == 1:  # (B,C,H,W,D)
-                x = x.squeeze(0)
-            if x.ndim == 4:  # (C,H,W,D)
-                x = x[0] if x.shape[0] == 1 else x.argmax(axis=0).astype(np.uint8)
-            elif x.ndim != 3:
-                raise ValueError(f"Unexpected pred shape {x.shape}")
-            return x
 
         local_env: Dict[str, Any] = {
             # MONAI execution utilities
